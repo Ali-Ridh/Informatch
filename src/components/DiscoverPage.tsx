@@ -1,3 +1,6 @@
+// app/(protected)/discover/page.tsx
+'use client'
+
 import React, { useState, useEffect } from 'react'
 import { supabase } from '@/integrations/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -82,7 +85,6 @@ const DiscoverPage: React.FC<DiscoverPageProps> = ({ user }) => {
         description: "You've successfully connected with this user",
       })
 
-      // Remove the user from suggestions
       setSuggestions(prev => prev.filter(suggestion => suggestion.user_id !== targetUserId))
     } catch (error) {
       console.error('Error creating match:', error)
@@ -116,7 +118,6 @@ const DiscoverPage: React.FC<DiscoverPageProps> = ({ user }) => {
         description: "This user will no longer appear in your suggestions",
       })
 
-      // Remove the user from suggestions
       setSuggestions(prev => prev.filter(suggestion => suggestion.user_id !== targetUserId))
     } catch (error) {
       console.error('Error blocking user:', error)

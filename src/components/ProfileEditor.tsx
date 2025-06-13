@@ -1,167 +1,158 @@
-
-import React, { useState, useEffect } from 'react'
-import { supabase } from '@/integrations/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
+// src/components/ProfileEditor.tsx
+import React, { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { useToast } from '@/components/ui/use-toast';
+import { User } from '@supabase/supabase-js';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useToast } from '@/hooks/use-toast'
-import { User } from '@supabase/supabase-js'
+// Removed: format from "date-fns" (since it's only used for the Popover/Calendar)
+// Removed: Popover, PopoverContent, PopoverTrigger
+// Removed: CalendarIcon
+// Removed: cn (assuming it was only used for the Calendar Popover)
 
-interface Profile {
-  profile_id: number
-  user_id: string
-  profile_username: string
-  profile_bio: string | null
-  profile_birthdate: string
-  profile_academic_interests: string | null
-  profile_non_academic_interests: string | null
-  profile_looking_for: string | null
+
+// Define the expected structure of a user profile for the editor
+interface UserProfile {
+  profile_id?: number; // Optional, as it might not exist for a new profile
+  user_id: string;
+  profile_username: string;
+  profile_bio: string | null;
+  profile_birthdate: string;
+  profile_academic_interests: string | null;
+  profile_non_academic_interests: string | null;
+  profile_looking_for: string | null;
+  profile_created_at?: string; // Optional
 }
 
+// Define the correct props interface for ProfileEditor
 interface ProfileEditorProps {
-  user: User | null
+  user: User; // User object will always be present here
+  supabaseClient: any; // Supabase client passed as a prop
+  currentProfile: UserProfile | null; // Existing profile data, or null for new profile
+  onProfileUpdated: () => void; // Callback to notify parent after save
 }
 
-const ProfileEditor: React.FC<ProfileEditorProps> = ({ user }) => {
-  const [profile, setProfile] = useState<Profile | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const { toast } = useToast()
+const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, supabaseClient, currentProfile, onProfileUpdated }) => {
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
 
-  const [formData, setFormData] = useState({
-    profile_username: '',
-    profile_bio: '',
-    profile_birthdate: '',
-    profile_academic_interests: '',
-    profile_non_academic_interests: '',
-    profile_looking_for: ''
-  })
+  // Initialize formData from currentProfile prop
+  const [formData, setFormData] = useState<UserProfile>({
+    user_id: user.id, // Always link to the current user's ID
+    profile_username: currentProfile?.profile_username || '',
+    profile_bio: currentProfile?.profile_bio || '',
+    profile_birthdate: currentProfile?.profile_birthdate || '',
+    profile_academic_interests: currentProfile?.profile_academic_interests || '',
+    profile_non_academic_interests: currentProfile?.profile_non_academic_interests || '',
+    profile_looking_for: currentProfile?.profile_looking_for || ''
+  });
 
+  // Use useEffect to update formData if currentProfile prop changes (e.g., user navigates back to edit)
   useEffect(() => {
-    if (user) {
-      fetchProfile()
+    if (currentProfile) {
+      setFormData({
+        user_id: user.id,
+        profile_username: currentProfile.profile_username || '',
+        profile_bio: currentProfile.profile_bio || '',
+        profile_birthdate: currentProfile.profile_birthdate || '',
+        profile_academic_interests: currentProfile.profile_academic_interests || '',
+        profile_non_academic_interests: currentProfile.profile_non_academic_interests || '',
+        profile_looking_for: currentProfile.profile_looking_for || ''
+      });
+    } else {
+      // Clear form if no profile is passed (e.g., creating a new profile)
+      setFormData({
+        user_id: user.id,
+        profile_username: '',
+        profile_bio: '',
+        profile_birthdate: '',
+        profile_academic_interests: '',
+        profile_non_academic_interests: '',
+        profile_looking_for: ''
+      });
     }
-  }, [user])
+  }, [currentProfile, user.id]); // Dependency on currentProfile and user.id
 
-  const fetchProfile = async () => {
-    if (!user) return
-
-    try {
-      setLoading(true)
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (error && error.code !== 'PGRST116') {
-        throw error
-      }
-
-      if (data) {
-        setProfile(data)
-        setFormData({
-          profile_username: data.profile_username || '',
-          profile_bio: data.profile_bio || '',
-          profile_birthdate: data.profile_birthdate || '',
-          profile_academic_interests: data.profile_academic_interests || '',
-          profile_non_academic_interests: data.profile_non_academic_interests || '',
-          profile_looking_for: data.profile_looking_for || ''
-        })
-      }
-    } catch (error) {
-      console.error('Error fetching profile:', error)
-      toast({
-        title: "Error",
-        description: "Failed to fetch profile data",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = (field: keyof UserProfile, value: string) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
-    }))
-  }
+    }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!user) return
+    e.preventDefault();
+    if (!user) {
+      toast({ title: "Error", description: "User not logged in.", variant: "destructive" });
+      return;
+    }
 
     try {
-      setSaving(true)
+      setSaving(true);
 
-      const profileData = {
+      // Basic validation: username and birthdate are required
+      if (!formData.profile_username.trim() || !formData.profile_birthdate.trim()) {
+        toast({
+          title: "Validation Error",
+          description: "Username and Birthdate are required.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const profileDataToSave = {
         user_id: user.id,
         profile_username: formData.profile_username.trim(),
         profile_bio: formData.profile_bio.trim() || null,
-        profile_birthdate: formData.profile_birthdate,
+        profile_birthdate: formData.profile_birthdate, // No longer needs format(date, 'yyyy-MM-dd') if it's a direct input string
         profile_academic_interests: formData.profile_academic_interests.trim() || null,
         profile_non_academic_interests: formData.profile_non_academic_interests.trim() || null,
         profile_looking_for: formData.profile_looking_for.trim() || null
+      };
+
+      let error = null;
+      if (currentProfile) { // If currentProfile exists, it's an update
+        const { error: updateError } = await supabaseClient
+          .from('profiles')
+          .update(profileDataToSave)
+          .eq('user_id', user.id);
+        error = updateError;
+      } else { // Otherwise, it's an insert
+        const { error: insertError } = await supabaseClient
+          .from('profiles')
+          .insert([profileDataToSave]);
+        error = insertError;
       }
 
-      let error
-      if (profile) {
-        // Update existing profile
-        const { error: updateError } = await supabase
-          .from('profiles')
-          .update(profileData)
-          .eq('user_id', user.id)
-        error = updateError
-      } else {
-        // Create new profile
-        const { error: insertError } = await supabase
-          .from('profiles')
-          .insert([profileData])
-        error = insertError
-      }
-
-      if (error) throw error
+      if (error) throw error;
 
       toast({
         title: "Success",
         description: "Profile saved successfully!",
-      })
+      });
 
-      // Refresh profile data
-      await fetchProfile()
-    } catch (error) {
-      console.error('Error saving profile:', error)
+      onProfileUpdated(); // Call the callback to notify parent
+    } catch (error: any) {
+      console.error('Error saving profile:', error);
       toast({
         title: "Error",
-        description: "Failed to save profile",
+        description: error.message || "Failed to save profile",
         variant: "destructive",
-      })
+      });
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
-  if (loading) {
-    return (
-      <Card className="w-full max-w-2xl mx-auto">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
 
   return (
     <Card className="w-full max-w-2xl mx-auto">
       <CardHeader>
-        <CardTitle>Edit Profile</CardTitle>
+        <CardTitle>{currentProfile ? 'Edit Profile' : 'Create Profile'}</CardTitle>
         <CardDescription>
-          Update your profile information to help others find you
+          {currentProfile ? 'Update your profile information.' : 'Add your information to help others find you.'}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -183,7 +174,7 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user }) => {
             <Label htmlFor="birthdate">Birth Date</Label>
             <Input
               id="birthdate"
-              type="date"
+              type="date" // Standard HTML date input
               value={formData.profile_birthdate}
               onChange={(e) => handleInputChange('profile_birthdate', e.target.value)}
               required
@@ -240,17 +231,17 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user }) => {
             />
           </div>
 
-          <Button 
-            type="submit" 
-            className="w-full" 
-            disabled={saving || !formData.profile_username.trim() || !formData.profile_birthdate}
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={saving || !formData.profile_username.trim() || !formData.profile_birthdate.trim()}
           >
             {saving ? 'Saving...' : 'Save Profile'}
           </Button>
         </form>
       </CardContent>
     </Card>
-  )
-}
+  );
+};
 
-export default ProfileEditor
+export default ProfileEditor;
