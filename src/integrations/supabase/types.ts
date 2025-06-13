@@ -78,37 +78,78 @@ export type Database = {
           },
         ]
       }
+      profile_images: {
+        Row: {
+          image_id: number
+          image_order: number
+          image_url: string
+          profile_id: number
+          uploaded_at: string | null
+        }
+        Insert: {
+          image_id?: number
+          image_order?: number
+          image_url: string
+          profile_id: number
+          uploaded_at?: string | null
+        }
+        Update: {
+          image_id?: number
+          image_order?: number
+          image_url?: string
+          profile_id?: number
+          uploaded_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profile_images_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["profile_id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           profile_academic_interests: string | null
+          profile_avatar_url: string | null
           profile_bio: string | null
           profile_birthdate: string
           profile_created_at: string | null
+          profile_gender: string | null
           profile_id: number
           profile_looking_for: string | null
           profile_non_academic_interests: string | null
+          profile_phone: string | null
           profile_username: string
           user_id: string
         }
         Insert: {
           profile_academic_interests?: string | null
+          profile_avatar_url?: string | null
           profile_bio?: string | null
           profile_birthdate: string
           profile_created_at?: string | null
+          profile_gender?: string | null
           profile_id?: number
           profile_looking_for?: string | null
           profile_non_academic_interests?: string | null
+          profile_phone?: string | null
           profile_username: string
           user_id: string
         }
         Update: {
           profile_academic_interests?: string | null
+          profile_avatar_url?: string | null
           profile_bio?: string | null
           profile_birthdate?: string
           profile_created_at?: string | null
+          profile_gender?: string | null
           profile_id?: number
           profile_looking_for?: string | null
           profile_non_academic_interests?: string | null
+          profile_phone?: string | null
           profile_username?: string
           user_id?: string
         }

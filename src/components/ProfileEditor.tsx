@@ -1,15 +1,13 @@
-// src/components/ProfileEditor.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { useToast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
 import { User } from '@supabase/supabase-js';
-import { UserCircle, UploadCloud, Trash2 } from 'lucide-react';
+import { UserCircle, UploadCloud, Trash2, Plus, X } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-// Import ShadCN Select components for Gender
 import {
   Select,
   SelectContent,
@@ -17,12 +15,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-// Removed: format from "date-fns", Popover, CalendarIcon, cn (as per previous request for basic date input)
 
-
-// Define the expected structure of a user profile for the editor
 interface UserProfile {
-  profile_id?: number; // Optional, as it might not exist for a new profile
+  profile_id?: number;
   user_id: string;
   profile_username: string;
   profile_bio: string | null;
@@ -30,29 +25,35 @@ interface UserProfile {
   profile_academic_interests: string | null;
   profile_non_academic_interests: string | null;
   profile_looking_for: string | null;
-  profile_created_at?: string; // Optional
-  profile_phone: string | null; // Added phone number
-  profile_avatar_url: string | null; // Added avatar URL
-  profile_gender: string | null; // Added gender
+  profile_created_at?: string;
+  profile_phone: string | null;
+  profile_avatar_url: string | null;
+  profile_gender: string | null;
+}
+
+interface ProfileImage {
+  image_id?: number;
+  image_url: string;
+  image_order: number;
+  file?: File;
 }
 
 interface ProfileEditorProps {
-  user: User; // User object will always be present here
-  supabaseClient: any; // Supabase client passed as a prop
-  currentProfile: UserProfile | null; // Existing profile data, or null for new profile
-  onProfileUpdated: () => void; // Callback to notify parent after save
+  user: User;
+  supabaseClient: any;
+  currentProfile: UserProfile | null;
+  onProfileUpdated: () => void;
 }
 
 const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, supabaseClient, currentProfile, onProfileUpdated }) => {
   const [saving, setSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [profileImages, setProfileImages] = useState<ProfileImage[]>([]);
+  const fileInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const { toast } = useToast();
 
   const [formData, setFormData] = useState<UserProfile>({
-    user_id: user.id, // Always link to the current user's ID
+    user_id: user.id,
     profile_username: currentProfile?.profile_username || '',
     profile_bio: currentProfile?.profile_bio || '',
     profile_birthdate: currentProfile?.profile_birthdate || '',
@@ -61,10 +62,9 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, supabaseClient, cur
     profile_looking_for: currentProfile?.profile_looking_for || '',
     profile_phone: currentProfile?.profile_phone || '',
     profile_avatar_url: currentProfile?.profile_avatar_url || null,
-    profile_gender: currentProfile?.profile_gender || null, // Initialize gender
+    profile_gender: currentProfile?.profile_gender || null,
   });
 
-  // Use useEffect to update formData and avatarPreviewUrl if currentProfile prop changes
   useEffect(() => {
     if (currentProfile) {
       setFormData({
@@ -77,11 +77,12 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, supabaseClient, cur
         profile_looking_for: currentProfile.profile_looking_for || '',
         profile_phone: currentProfile.profile_phone || '',
         profile_avatar_url: currentProfile.profile_avatar_url || null,
-        profile_gender: currentProfile.profile_gender || null, // Update gender
+        profile_gender: currentProfile.profile_gender || null,
       });
-      setAvatarPreviewUrl(currentProfile.profile_avatar_url || null);
+      
+      // Fetch existing profile images
+      fetchProfileImages();
     } else {
-      // Clear form if no profile is passed (e.g., creating a new profile)
       setFormData({
         user_id: user.id,
         profile_username: '',
@@ -92,12 +93,37 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, supabaseClient, cur
         profile_looking_for: '',
         profile_phone: '',
         profile_avatar_url: null,
-        profile_gender: null, // Clear gender
+        profile_gender: null,
       });
-      setAvatarPreviewUrl(null);
+      setProfileImages([]);
     }
-    setAvatarFile(null); // Clear any selected file on profile change
   }, [currentProfile, user.id]);
+
+  const fetchProfileImages = async () => {
+    if (!currentProfile?.profile_id) return;
+
+    try {
+      const { data, error } = await supabaseClient
+        .from('profile_images')
+        .select('*')
+        .eq('profile_id', currentProfile.profile_id)
+        .order('image_order');
+
+      if (error) throw error;
+
+      const images: ProfileImage[] = data || [];
+      // Ensure we have slots for 3 images
+      while (images.length < 3) {
+        images.push({
+          image_url: '',
+          image_order: images.length + 1
+        });
+      }
+      setProfileImages(images);
+    } catch (error: any) {
+      console.error('Error fetching profile images:', error);
+    }
+  };
 
   const handleInputChange = (field: keyof UserProfile, value: string) => {
     setFormData(prev => ({
@@ -106,52 +132,67 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, supabaseClient, cur
     }));
   };
 
-  const handleSelectChange = (value: string) => { // Handler for ShadCN Select component (Gender)
+  const handleSelectChange = (value: string) => {
     setFormData(prev => ({
       ...prev,
-      profile_gender: value // Direct update for gender
+      profile_gender: value
     }));
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleImageChange = (index: number, file: File | null) => {
     if (file) {
       if (!file.type.startsWith('image/')) {
-        toast({ title: "Invalid file type", description: "Please select an image file (e.g., JPEG, PNG, GIF).", variant: "destructive" });
-        setAvatarFile(null); setAvatarPreviewUrl(null); return;
+        toast({ 
+          title: "Invalid file type", 
+          description: "Please select an image file (e.g., JPEG, PNG, GIF).", 
+          variant: "destructive" 
+        });
+        return;
       }
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
-        toast({ title: "File too large", description: "Image size should not exceed 5MB.", variant: "destructive" });
-        setAvatarFile(null); setAvatarPreviewUrl(null); return;
+      if (file.size > 5 * 1024 * 1024) {
+        toast({ 
+          title: "File too large", 
+          description: "Image size should not exceed 5MB.", 
+          variant: "destructive" 
+        });
+        return;
       }
-      setAvatarFile(file);
-      setAvatarPreviewUrl(URL.createObjectURL(file));
-    } else {
-      setAvatarFile(null);
-      setAvatarPreviewUrl(formData.profile_avatar_url);
+
+      const newImages = [...profileImages];
+      newImages[index] = {
+        ...newImages[index],
+        image_url: URL.createObjectURL(file),
+        file: file
+      };
+      setProfileImages(newImages);
     }
   };
 
-  const handleRemoveAvatar = () => {
-    setAvatarFile(null);
-    setAvatarPreviewUrl(null);
-    setFormData(prev => ({ ...prev, profile_avatar_url: null }));
-    if (fileInputRef.current) { fileInputRef.current.value = ''; }
+  const handleRemoveImage = (index: number) => {
+    const newImages = [...profileImages];
+    if (newImages[index].image_url && newImages[index].image_url.startsWith('blob:')) {
+      URL.revokeObjectURL(newImages[index].image_url);
+    }
+    newImages[index] = {
+      image_url: '',
+      image_order: index + 1
+    };
+    setProfileImages(newImages);
+    
+    if (fileInputRefs.current[index]) {
+      fileInputRefs.current[index]!.value = '';
+    }
   };
 
-  const uploadAvatar = async (): Promise<string | null> => {
-    if (!avatarFile) {
-      return formData.profile_avatar_url;
-    }
-    setIsUploading(true);
-    const fileExtension = avatarFile.name.split('.').pop();
-    const filePath = `${user.id}/${Date.now()}.${fileExtension}`;
-    const bucketName = 'avatars'; // Your bucket name
+  const uploadImage = async (file: File, order: number): Promise<string | null> => {
+    const fileExtension = file.name.split('.').pop();
+    const filePath = `${user.id}/image_${order}_${Date.now()}.${fileExtension}`;
+    const bucketName = 'profile-images';
 
     try {
       const { error } = await supabaseClient.storage
         .from(bucketName)
-        .upload(filePath, avatarFile, { cacheControl: '3600', upsert: true });
+        .upload(filePath, file, { cacheControl: '3600', upsert: true });
 
       if (error) throw error;
 
@@ -159,20 +200,17 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, supabaseClient, cur
         .from(bucketName)
         .getPublicUrl(filePath);
 
-      if (publicUrlData) {
-        toast({ title: "Avatar uploaded", description: "Your profile picture has been updated." });
-        return publicUrlData.publicUrl;
-      }
-      return null;
+      return publicUrlData?.publicUrl || null;
     } catch (error: any) {
-      console.error('Error uploading avatar:', error.message);
-      toast({ title: "Upload Failed", description: error.message || "Failed to upload profile picture.", variant: "destructive" });
+      console.error('Error uploading image:', error.message);
+      toast({ 
+        title: "Upload Failed", 
+        description: error.message || "Failed to upload image.", 
+        variant: "destructive" 
+      });
       return null;
-    } finally {
-      setIsUploading(false);
     }
   };
-
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -184,7 +222,6 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, supabaseClient, cur
     try {
       setSaving(true);
 
-      // Basic validation: username and birthdate are required
       if (!formData.profile_username.trim() || !formData.profile_birthdate.trim()) {
         toast({
           title: "Validation Error",
@@ -194,47 +231,100 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, supabaseClient, cur
         return;
       }
 
-      let newAvatarUrl = formData.profile_avatar_url;
-      if (avatarFile || (avatarPreviewUrl === null && formData.profile_avatar_url !== null)) {
-        newAvatarUrl = await uploadAvatar();
-      }
-
+      // Handle profile data
       const profileDataToSave: Partial<UserProfile> = {
         profile_username: formData.profile_username.trim(),
-        profile_bio: formData.profile_bio.trim() || null,
+        profile_bio: formData.profile_bio?.trim() || null,
         profile_birthdate: formData.profile_birthdate,
-        profile_academic_interests: formData.profile_academic_interests.trim() || null,
-        profile_non_academic_interests: formData.profile_non_academic_interests.trim() || null,
-        profile_looking_for: formData.profile_looking_for.trim() || null,
-        profile_phone: formData.profile_phone.trim() || null,
-        profile_avatar_url: newAvatarUrl,
-        profile_gender: formData.profile_gender, // Save gender
+        profile_academic_interests: formData.profile_academic_interests?.trim() || null,
+        profile_non_academic_interests: formData.profile_non_academic_interests?.trim() || null,
+        profile_looking_for: formData.profile_looking_for?.trim() || null,
+        profile_phone: formData.profile_phone?.trim() || null,
+        profile_gender: formData.profile_gender,
       };
 
+      let profileId = currentProfile?.profile_id;
       let error = null;
+
       if (currentProfile) {
-        const { error: updateError } = await supabaseClient.from('profiles').update(profileDataToSave).eq('user_id', user.id);
+        const { error: updateError } = await supabaseClient
+          .from('profiles')
+          .update(profileDataToSave)
+          .eq('user_id', user.id);
         error = updateError;
       } else {
-        const { error: insertError } = await supabaseClient.from('profiles').insert([{ ...profileDataToSave, user_id: user.id }]);
+        const { data: insertData, error: insertError } = await supabaseClient
+          .from('profiles')
+          .insert([{ ...profileDataToSave, user_id: user.id }])
+          .select('profile_id')
+          .single();
         error = insertError;
+        profileId = insertData?.profile_id;
       }
 
       if (error) throw error;
 
-      toast({ title: "Success", description: "Profile saved successfully!", });
+      // Handle image uploads
+      setIsUploading(true);
+      for (let i = 0; i < profileImages.length; i++) {
+        const image = profileImages[i];
+        if (image.file) {
+          const uploadedUrl = await uploadImage(image.file, i + 1);
+          if (uploadedUrl && profileId) {
+            // Check if image already exists
+            const { data: existingImage } = await supabaseClient
+              .from('profile_images')
+              .select('image_id')
+              .eq('profile_id', profileId)
+              .eq('image_order', i + 1)
+              .single();
+
+            if (existingImage) {
+              // Update existing image
+              await supabaseClient
+                .from('profile_images')
+                .update({ image_url: uploadedUrl })
+                .eq('image_id', existingImage.image_id);
+            } else {
+              // Insert new image
+              await supabaseClient
+                .from('profile_images')
+                .insert({
+                  profile_id: profileId,
+                  image_url: uploadedUrl,
+                  image_order: i + 1
+                });
+            }
+          }
+        }
+      }
+
+      // Update avatar URL with first image
+      const firstImage = profileImages.find(img => img.image_url && !img.image_url.startsWith('blob:'));
+      if (firstImage && profileId) {
+        await supabaseClient
+          .from('profiles')
+          .update({ profile_avatar_url: firstImage.image_url })
+          .eq('profile_id', profileId);
+      }
+
+      toast({ title: "Success", description: "Profile saved successfully!" });
       onProfileUpdated();
     } catch (error: any) {
       console.error('Error saving profile:', error);
-      toast({ title: "Error", description: error.message || "Failed to save profile", variant: "destructive" });
+      toast({ 
+        title: "Error", 
+        description: error.message || "Failed to save profile", 
+        variant: "destructive" 
+      });
     } finally {
       setSaving(false);
+      setIsUploading(false);
     }
   };
 
-
   return (
-    <Card className="w-full max-w-2xl mx-auto">
+    <Card className="w-full max-w-4xl mx-auto">
       <CardHeader>
         <CardTitle>{currentProfile ? 'Edit Profile' : 'Create Profile'}</CardTitle>
         <CardDescription>
@@ -243,48 +333,70 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, supabaseClient, cur
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Profile Picture Upload Section */}
-          <div className="flex flex-col items-center gap-4">
-            <Label className="text-lg font-semibold">Profile Picture</Label>
-            <Avatar className="h-32 w-32 border-2 border-primary">
-              <AvatarImage src={avatarPreviewUrl || undefined} alt="Profile Avatar" />
-              <AvatarFallback className="bg-muted text-muted-foreground">
-                {isUploading ? (
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                ) : (
-                  <UserCircle className="h-16 w-16" />
-                )}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex items-center space-x-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
-              >
-                <UploadCloud className="mr-2 h-4 w-4" /> Upload New Image
-              </Button>
-              {avatarPreviewUrl && (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={handleRemoveAvatar}
-                  disabled={isUploading}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" /> Remove
-                </Button>
-              )}
-              <Input
-                type="file"
-                ref={fileInputRef}
-                className="hidden"
-                accept="image/*"
-                onChange={handleFileChange}
-                disabled={isUploading}
-              />
+          {/* Profile Images Section */}
+          <div className="space-y-4">
+            <Label className="text-lg font-semibold">Profile Images (Up to 3)</Label>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {profileImages.map((image, index) => (
+                <div key={index} className="space-y-2">
+                  <div className="relative">
+                    <div className="aspect-square w-full border-2 border-dashed border-gray-300 rounded-lg overflow-hidden bg-gray-50">
+                      {image.image_url ? (
+                        <div className="relative w-full h-full">
+                          <img
+                            src={image.image_url}
+                            alt={`Profile ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            className="absolute top-2 right-2"
+                            onClick={() => handleRemoveImage(index)}
+                            disabled={isUploading}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                          {index === 0 && (
+                            <div className="absolute bottom-2 left-2 bg-primary text-primary-foreground px-2 py-1 rounded text-xs">
+                              Main Photo
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                          <UploadCloud className="h-8 w-8 mb-2" />
+                          <span className="text-sm">
+                            {index === 0 ? 'Main Photo' : `Photo ${index + 1}`}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <input
+                      type="file"
+                      ref={(el) => (fileInputRefs.current[index] = el)}
+                      className="hidden"
+                      accept="image/*"
+                      onChange={(e) => handleImageChange(index, e.target.files?.[0] || null)}
+                      disabled={isUploading}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => fileInputRefs.current[index]?.click()}
+                    disabled={isUploading}
+                  >
+                    {image.image_url ? 'Change Image' : 'Add Image'}
+                  </Button>
+                </div>
+              ))}
             </div>
-            <p className="text-sm text-muted-foreground">Max 5MB (JPG, PNG, GIF)</p>
+            <p className="text-sm text-muted-foreground">
+              The first image will be used as your main profile photo. Max 5MB per image (JPG, PNG, GIF).
+            </p>
           </div>
 
           {/* Username */}
@@ -305,8 +417,8 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, supabaseClient, cur
           <div className="space-y-2">
             <Label htmlFor="gender">Gender</Label>
             <Select
-              value={formData.profile_gender || ''} // Handle null case for value prop
-              onValueChange={(value) => handleSelectChange(value)} // Use new handleSelectChange
+              value={formData.profile_gender || ''}
+              onValueChange={handleSelectChange}
             >
               <SelectTrigger id="gender" className="w-full">
                 <SelectValue placeholder="Select your gender" />
@@ -325,7 +437,7 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ user, supabaseClient, cur
             <Label htmlFor="phone">Phone Number</Label>
             <Input
               id="phone"
-              type="tel" // Use type="tel" for phone numbers
+              type="tel"
               placeholder="e.g., +6281234567890"
               value={formData.profile_phone || ''}
               onChange={(e) => handleInputChange('profile_phone', e.target.value)}

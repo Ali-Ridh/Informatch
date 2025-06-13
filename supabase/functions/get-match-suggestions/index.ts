@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 import { corsHeaders } from '../_shared/cors.ts'
 
@@ -11,6 +10,11 @@ interface Profile {
   profile_academic_interests: string;
   profile_non_academic_interests: string;
   profile_looking_for: string;
+  profile_avatar_url: string;
+  profile_gender: string;
+  profile_phone: string;
+  user_priset_show_age: boolean;
+  user_priset_show_bio: boolean;
   compatibility_score?: number;
 }
 
@@ -49,10 +53,17 @@ Deno.serve(async (req) => {
       throw new Error('Current user profile not found')
     }
 
-    // Get all other profiles
+    // Get all other profiles with user privacy settings
     const { data: allProfiles, error: profilesError } = await supabase
       .from('profiles')
-      .select('*')
+      .select(`
+        *,
+        users!inner(
+          user_priset_show_age,
+          user_priset_show_bio,
+          user_priset_is_private
+        )
+      `)
       .neq('user_id', user.id)
 
     if (profilesError) {
@@ -113,12 +124,13 @@ Deno.serve(async (req) => {
       ? currentProfile.profile_non_academic_interests.split(',').map(i => i.trim().toLowerCase())
       : []
 
-    // Calculate compatibility scores
+    // Calculate compatibility scores and flatten the user data
     const suggestedProfiles: Profile[] = allProfiles
       ?.filter(profile => 
         !matchedUserIds.has(profile.user_id) &&
         !blockedUserIds.has(profile.user_id) &&
-        !blockedByUserIds.has(profile.user_id)
+        !blockedByUserIds.has(profile.user_id) &&
+        !profile.users.user_priset_is_private // Filter out private profiles
       )
       .map(profile => {
         const academicInterests = profile.profile_academic_interests
@@ -141,8 +153,21 @@ Deno.serve(async (req) => {
         // Calculate compatibility score (academic interests weighted more heavily)
         const compatibilityScore = (sharedAcademic * 2) + sharedNonAcademic
 
+        // Flatten the nested user data
         return {
-          ...profile,
+          profile_id: profile.profile_id,
+          user_id: profile.user_id,
+          profile_username: profile.profile_username,
+          profile_bio: profile.profile_bio,
+          profile_birthdate: profile.profile_birthdate,
+          profile_academic_interests: profile.profile_academic_interests,
+          profile_non_academic_interests: profile.profile_non_academic_interests,
+          profile_looking_for: profile.profile_looking_for,
+          profile_avatar_url: profile.profile_avatar_url,
+          profile_gender: profile.profile_gender,
+          profile_phone: profile.profile_phone,
+          user_priset_show_age: profile.users.user_priset_show_age,
+          user_priset_show_bio: profile.users.user_priset_show_bio,
           compatibility_score: compatibilityScore
         }
       })

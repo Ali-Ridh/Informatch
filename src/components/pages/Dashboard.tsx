@@ -16,7 +16,7 @@ import {
   School,
   HeartHandshake,
   Search,
-} from 'lucide-react'; // No specific Gender icons needed here
+} from 'lucide-react';
 
 interface ProfileSuggestion {
   profile_id: number;
@@ -32,6 +32,10 @@ interface ProfileSuggestion {
   user_priset_show_age: boolean;
   user_priset_show_bio: boolean;
   compatibility_score?: number;
+  profile_images?: Array<{
+    image_url: string;
+    image_order: number;
+  }>;
 }
 
 interface DashboardProps {
@@ -68,7 +72,23 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
 
       if (error) throw error;
 
-      setSuggestions(data.suggestions || []);
+      // Fetch profile images for each suggestion
+      const suggestionsWithImages = await Promise.all(
+        (data.suggestions || []).map(async (suggestion: ProfileSuggestion) => {
+          const { data: images } = await supabaseClient
+            .from('profile_images')
+            .select('image_url, image_order')
+            .eq('profile_id', suggestion.profile_id)
+            .order('image_order');
+
+          return {
+            ...suggestion,
+            profile_images: images || []
+          };
+        })
+      );
+
+      setSuggestions(suggestionsWithImages);
     } catch (error: any) {
       console.error('Error fetching suggestions:', error);
       toast({
@@ -143,23 +163,36 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
     }
   };
 
-  // Helper function to parse comma-separated interests
   const parseInterests = (interests: string | null) => {
     return interests ? interests.split(',').map(i => i.trim()).filter(i => i) : [];
   };
 
-  // Helper function to get gender icon/symbol (using Unicode)
   const getGenderIcon = (gender: string | null): React.ReactNode => {
     switch (gender?.toLowerCase()) {
       case 'male':
-        return <span className="text-primary text-xl">♂</span>; // Unicode Male symbol
+        return <span className="text-primary text-xl">♂</span>;
       case 'female':
-        return <span className="text-primary text-xl">♀</span>; // Unicode Female symbol
+        return <span className="text-primary text-xl">♀</span>;
       case 'non-binary':
       case 'prefer not to say':
       default:
-        return <Users className="h-5 w-5 text-primary" />; // Generic icon for other options or default
+        return <Users className="h-5 w-5 text-primary" />;
     }
+  };
+
+  const getMainImage = (suggestion: ProfileSuggestion) => {
+    // First try to get the first profile image
+    const firstImage = suggestion.profile_images?.find(img => img.image_order === 1);
+    if (firstImage?.image_url) {
+      return firstImage.image_url;
+    }
+    
+    // Fallback to avatar URL
+    if (suggestion.profile_avatar_url) {
+      return suggestion.profile_avatar_url;
+    }
+    
+    return null;
   };
 
   if (loading) {
@@ -197,18 +230,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
           {suggestions.map((suggestion) => {
             const academicInterests = parseInterests(suggestion.profile_academic_interests);
             const nonAcademicInterests = parseInterests(suggestion.profile_non_academic_interests);
-            
-            // Age is calculated but not used here due to privacy setting and previous request
-            // const age = calculateAge(suggestion.profile_birthdate); 
             const isActionLoading = actionLoading === suggestion.user_id;
+            const mainImageUrl = getMainImage(suggestion);
 
             return (
               <Card key={suggestion.profile_id} className="overflow-hidden hover:shadow-lg transition-shadow">
                 <CardHeader className="pb-3">
                   <div className="flex items-center gap-4">
-                    {/* Avatar */}
                     <Avatar className="h-16 w-16 border-2 border-muted-foreground">
-                      <AvatarImage src={suggestion.profile_avatar_url || undefined} alt={suggestion.profile_username} />
+                      <AvatarImage src={mainImageUrl || undefined} alt={suggestion.profile_username} />
                       <AvatarFallback className="bg-muted text-muted-foreground">
                         {suggestion.profile_username.substring(0, 2).toUpperCase() || <UserCircle className="h-10 w-10" />}
                       </AvatarFallback>
@@ -222,12 +252,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
                           </Badge>
                         )}
                       </CardTitle>
-                      {/* Gender and conditionally shown Birthdate */}
                       <div className="flex items-center text-sm text-muted-foreground mt-1 gap-2">
                         <span className="flex items-center gap-1">
                           {getGenderIcon(suggestion.profile_gender)} {suggestion.profile_gender || 'N/A'}
                         </span>
-                        {/* Only show birthdate if user_priset_show_age is true for the suggested profile */}
                         {suggestion.user_priset_show_age && suggestion.profile_birthdate && (
                           <>
                             <Separator orientation="vertical" className="h-4" />
@@ -240,12 +268,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
                 </CardHeader>
 
                 <CardContent className="space-y-4 pt-3">
-                  {/*
-                    The bio is added here. Its visibility is controlled by
-                    the `user_priset_show_bio` privacy setting from the suggested user's profile.
-                    If you want to always show the bio regardless of privacy,
-                    you would remove `suggestion.user_priset_show_bio &&` from the condition.
-                  */}
                   {suggestion.user_priset_show_bio && suggestion.profile_bio && (
                     <div>
                       <h4 className="font-medium text-sm text-muted-foreground mb-1">About</h4>
