@@ -46,7 +46,7 @@ const MainApp: React.FC<MainAppProps> = ({ user }) => {
   const renderActivePage = () => {
     switch (activePage) {
       case 'dashboard':
-        return <Dashboard user={user} />; {/* Assuming Dashboard might need supabaseClient */}
+        return <Dashboard user={user} supabaseClient={supabase}/>; {/* Assuming Dashboard might need supabaseClient */}
       case 'notifications':
         return <Notifications user={user} />; {/* Assuming Notifications might need supabaseClient */}
       case 'friends':
@@ -56,7 +56,7 @@ const MainApp: React.FC<MainAppProps> = ({ user }) => {
       case 'profile':
         return <ProfilePage user={user} supabaseClient={supabase} />; // Passing supabaseClient to ProfilePage
       default:
-        return <Dashboard user={user}/>; // Default to Dashboard
+        return <Dashboard user={user} supabaseClient={supabase}/>; // Default to Dashboard
     }
   };
 

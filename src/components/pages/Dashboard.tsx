@@ -1,142 +1,166 @@
-
-import React, { useState, useEffect } from 'react'
-import { supabase } from '@/integrations/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { useToast } from '@/hooks/use-toast'
-import { User } from '@supabase/supabase-js'
-import { Heart, UserX, Loader2, Users } from 'lucide-react'
+import React, { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Separator } from '@/components/ui/separator';
+import { useToast } from '@/hooks/use-toast';
+import { User } from '@supabase/supabase-js';
+import {
+  Heart,
+  UserX,
+  Loader2,
+  Users,
+  UserCircle,
+  Cake,
+  School,
+  HeartHandshake,
+  Search,
+} from 'lucide-react'; // No specific Gender icons needed here
 
 interface ProfileSuggestion {
-  profile_id: number
-  user_id: string
-  profile_username: string
-  profile_bio: string | null
-  profile_birthdate: string
-  profile_academic_interests: string | null
-  profile_non_academic_interests: string | null
-  profile_looking_for: string | null
-  compatibility_score?: number
+  profile_id: number;
+  user_id: string;
+  profile_username: string;
+  profile_bio: string | null;
+  profile_birthdate: string;
+  profile_academic_interests: string | null;
+  profile_non_academic_interests: string | null;
+  profile_looking_for: string | null;
+  profile_avatar_url: string | null;
+  profile_gender: string | null;
+  user_priset_show_age: boolean;
+  user_priset_show_bio: boolean;
+  compatibility_score?: number;
 }
 
 interface DashboardProps {
-  user: User
+  user: User;
+  supabaseClient: any;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ user }) => {
-  const [suggestions, setSuggestions] = useState<ProfileSuggestion[]>([])
-  const [loading, setLoading] = useState(true)
-  const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const { toast } = useToast()
+const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
+  const [suggestions, setSuggestions] = useState<ProfileSuggestion[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
-    fetchSuggestions()
-  }, [user])
+    if (user?.id) {
+      fetchSuggestions();
+    }
+  }, [user, supabaseClient]);
 
   const fetchSuggestions = async () => {
     try {
-      setLoading(true)
-      
-      const { data, error } = await supabase.functions.invoke('get-match-suggestions', {
+      setLoading(true);
+
+      const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+      if (sessionError || !sessionData.session) {
+        throw new Error('User session not found.');
+      }
+
+      const { data, error } = await supabaseClient.functions.invoke('get-match-suggestions', {
         headers: {
-          Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+          Authorization: `Bearer ${sessionData.session.access_token}`
         }
-      })
+      });
 
-      if (error) throw error
+      if (error) throw error;
 
-      setSuggestions(data.suggestions || [])
-    } catch (error) {
-      console.error('Error fetching suggestions:', error)
+      setSuggestions(data.suggestions || []);
+    } catch (error: any) {
+      console.error('Error fetching suggestions:', error);
       toast({
         title: "Error",
-        description: "Failed to fetch match suggestions",
+        description: error.message || "Failed to fetch match suggestions",
         variant: "destructive",
-      })
+      });
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleConnect = async (targetUserId: string) => {
     try {
-      setActionLoading(targetUserId)
+      setActionLoading(targetUserId);
 
-      const { error } = await supabase
+      const { error } = await supabaseClient
         .from('matches')
         .insert([{
           match_user1_id: user.id,
           match_user2_id: targetUserId
-        }])
+        }]);
 
-      if (error) throw error
+      if (error) throw error;
 
       toast({
         title: "Connected!",
         description: "You've successfully connected with this user",
-      })
+      });
 
-      setSuggestions(prev => prev.filter(suggestion => suggestion.user_id !== targetUserId))
-    } catch (error) {
-      console.error('Error creating match:', error)
+      setSuggestions(prev => prev.filter(suggestion => suggestion.user_id !== targetUserId));
+    } catch (error: any) {
+      console.error('Error creating match:', error);
       toast({
         title: "Error",
-        description: "Failed to create connection",
+        description: error.message || "Failed to create connection",
         variant: "destructive",
-      })
+      });
     } finally {
-      setActionLoading(null)
+      setActionLoading(null);
     }
-  }
+  };
 
   const handleBlock = async (targetUserId: string) => {
     try {
-      setActionLoading(targetUserId)
+      setActionLoading(targetUserId);
 
-      const { error } = await supabase
+      const { error } = await supabaseClient
         .from('blocked_users')
         .insert([{
           blocker_id: user.id,
           blocked_id: targetUserId
-        }])
+        }]);
 
-      if (error) throw error
+      if (error) throw error;
 
       toast({
         title: "User blocked",
         description: "This user will no longer appear in your suggestions",
-      })
+      });
 
-      setSuggestions(prev => prev.filter(suggestion => suggestion.user_id !== targetUserId))
-    } catch (error) {
-      console.error('Error blocking user:', error)
+      setSuggestions(prev => prev.filter(suggestion => suggestion.user_id !== targetUserId));
+    } catch (error: any) {
+      console.error('Error blocking user:', error);
       toast({
         title: "Error",
-        description: "Failed to block user",
+        description: error.message || "Failed to block user",
         variant: "destructive",
-      })
+      });
     } finally {
-      setActionLoading(null)
+      setActionLoading(null);
     }
-  }
+  };
 
-  const calculateAge = (birthdate: string) => {
-    const today = new Date()
-    const birth = new Date(birthdate)
-    let age = today.getFullYear() - birth.getFullYear()
-    const monthDiff = today.getMonth() - birth.getMonth()
-    
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-      age--
-    }
-    
-    return age
-  }
-
+  // Helper function to parse comma-separated interests
   const parseInterests = (interests: string | null) => {
-    return interests ? interests.split(',').map(i => i.trim()).filter(i => i) : []
-  }
+    return interests ? interests.split(',').map(i => i.trim()).filter(i => i) : [];
+  };
+
+  // Helper function to get gender icon/symbol (using Unicode)
+  const getGenderIcon = (gender: string | null): React.ReactNode => {
+    switch (gender?.toLowerCase()) {
+      case 'male':
+        return <span className="text-primary text-xl">♂</span>; // Unicode Male symbol
+      case 'female':
+        return <span className="text-primary text-xl">♀</span>; // Unicode Female symbol
+      case 'non-binary':
+      case 'prefer not to say':
+      default:
+        return <Users className="h-5 w-5 text-primary" />; // Generic icon for other options or default
+    }
+  };
 
   if (loading) {
     return (
@@ -146,7 +170,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
           <p className="mt-4 text-lg text-muted-foreground">Finding your perfect matches...</p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -171,30 +195,61 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {suggestions.map((suggestion) => {
-            const academicInterests = parseInterests(suggestion.profile_academic_interests)
-            const nonAcademicInterests = parseInterests(suggestion.profile_non_academic_interests)
-            const age = calculateAge(suggestion.profile_birthdate)
-            const isActionLoading = actionLoading === suggestion.user_id
+            const academicInterests = parseInterests(suggestion.profile_academic_interests);
+            const nonAcademicInterests = parseInterests(suggestion.profile_non_academic_interests);
+            
+            // Age is calculated but not used here due to privacy setting and previous request
+            // const age = calculateAge(suggestion.profile_birthdate); 
+            const isActionLoading = actionLoading === suggestion.user_id;
 
             return (
               <Card key={suggestion.profile_id} className="overflow-hidden hover:shadow-lg transition-shadow">
                 <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-xl">{suggestion.profile_username}</CardTitle>
-                    {suggestion.compatibility_score !== undefined && (
-                      <Badge variant="secondary" className="bg-green-100 text-green-800">
-                        {suggestion.compatibility_score} matches
-                      </Badge>
-                    )}
+                  <div className="flex items-center gap-4">
+                    {/* Avatar */}
+                    <Avatar className="h-16 w-16 border-2 border-muted-foreground">
+                      <AvatarImage src={suggestion.profile_avatar_url || undefined} alt={suggestion.profile_username} />
+                      <AvatarFallback className="bg-muted text-muted-foreground">
+                        {suggestion.profile_username.substring(0, 2).toUpperCase() || <UserCircle className="h-10 w-10" />}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1">
+                      <CardTitle className="text-xl flex items-center justify-between">
+                        {suggestion.profile_username}
+                        {suggestion.compatibility_score !== undefined && (
+                          <Badge variant="secondary" className="bg-green-100 text-green-800">
+                            {suggestion.compatibility_score} matches
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      {/* Gender and conditionally shown Birthdate */}
+                      <div className="flex items-center text-sm text-muted-foreground mt-1 gap-2">
+                        <span className="flex items-center gap-1">
+                          {getGenderIcon(suggestion.profile_gender)} {suggestion.profile_gender || 'N/A'}
+                        </span>
+                        {/* Only show birthdate if user_priset_show_age is true for the suggested profile */}
+                        {suggestion.user_priset_show_age && suggestion.profile_birthdate && (
+                          <>
+                            <Separator orientation="vertical" className="h-4" />
+                            <span>Birthdate: {suggestion.profile_birthdate}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <CardDescription>Age: {age}</CardDescription>
                 </CardHeader>
-                
-                <CardContent className="space-y-4">
-                  {suggestion.profile_bio && (
+
+                <CardContent className="space-y-4 pt-3">
+                  {/*
+                    The bio is added here. Its visibility is controlled by
+                    the `user_priset_show_bio` privacy setting from the suggested user's profile.
+                    If you want to always show the bio regardless of privacy,
+                    you would remove `suggestion.user_priset_show_bio &&` from the condition.
+                  */}
+                  {suggestion.user_priset_show_bio && suggestion.profile_bio && (
                     <div>
                       <h4 className="font-medium text-sm text-muted-foreground mb-1">About</h4>
-                      <p className="text-sm">{suggestion.profile_bio}</p>
+                      <p className="text-sm line-clamp-3">{suggestion.profile_bio}</p>
                     </div>
                   )}
 
@@ -264,12 +319,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                   </div>
                 </CardContent>
               </Card>
-            )
+            );
           })}
         </div>
       )}
     </div>
-  )
-}
+  );
+};
 
-export default Dashboard
+export default Dashboard;
