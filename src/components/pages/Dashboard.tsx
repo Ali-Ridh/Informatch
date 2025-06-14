@@ -59,11 +59,26 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
   const fetchSuggestions = async () => {
     try {
       setLoading(true);
+      console.log('Fetching suggestions for user:', user.id);
 
       const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
-      if (sessionError || !sessionData.session) {
-        throw new Error('User session not found.');
+      
+      if (sessionError) {
+        console.error('Session error:', sessionError);
+        throw new Error('Failed to get user session');
       }
+
+      if (!sessionData.session) {
+        console.error('No session found');
+        throw new Error('User session not found. Please log in again.');
+      }
+
+      if (!sessionData.session.access_token) {
+        console.error('No access token in session');
+        throw new Error('Invalid session. Please log in again.');
+      }
+
+      console.log('Making request with access token');
 
       const { data, error } = await supabaseClient.functions.invoke('get-match-suggestions', {
         headers: {
@@ -71,21 +86,34 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Edge function error:', error);
+        throw error;
+      }
+
+      console.log('Successfully fetched suggestions:', data);
 
       // Fetch profile images for each suggestion
       const suggestionsWithImages = await Promise.all(
         (data.suggestions || []).map(async (suggestion: ProfileSuggestion) => {
-          const { data: images } = await supabaseClient
-            .from('profile_images')
-            .select('image_url, image_order')
-            .eq('profile_id', suggestion.profile_id)
-            .order('image_order');
+          try {
+            const { data: images } = await supabaseClient
+              .from('profile_images')
+              .select('image_url, image_order')
+              .eq('profile_id', suggestion.profile_id)
+              .order('image_order');
 
-          return {
-            ...suggestion,
-            profile_images: images || []
-          };
+            return {
+              ...suggestion,
+              profile_images: images || []
+            };
+          } catch (imageError) {
+            console.error('Error fetching images for profile:', suggestion.profile_id, imageError);
+            return {
+              ...suggestion,
+              profile_images: []
+            };
+          }
         })
       );
 
@@ -97,6 +125,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
         description: error.message || "Failed to fetch match suggestions",
         variant: "destructive",
       });
+      
+      // If it's an auth error, suggest re-login
+      if (error.message?.includes('session') || error.message?.includes('auth')) {
+        toast({
+          title: "Authentication Error",
+          description: "Please sign out and sign in again to refresh your session",
+          variant: "destructive",
+        });
+      }
     } finally {
       setLoading(false);
     }
