@@ -13,22 +13,32 @@ export type Database = {
         Row: {
           blocked_at: string | null
           blocked_id: string
+          blocked_user_id: string
           blocker_id: string
         }
         Insert: {
           blocked_at?: string | null
           blocked_id: string
+          blocked_user_id: string
           blocker_id: string
         }
         Update: {
           blocked_at?: string | null
           blocked_id?: string
+          blocked_user_id?: string
           blocker_id?: string
         }
         Relationships: [
           {
             foreignKeyName: "blocked_users_blocked_id_fkey"
             columns: ["blocked_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "blocked_users_blocked_user_id_fkey"
+            columns: ["blocked_user_id"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["user_id"]
@@ -48,18 +58,24 @@ export type Database = {
           match_user1_id: string
           match_user2_id: string
           matched_at: string | null
+          requested_at: string | null
+          status: string
         }
         Insert: {
           match_id?: number
           match_user1_id: string
           match_user2_id: string
           matched_at?: string | null
+          requested_at?: string | null
+          status?: string
         }
         Update: {
           match_id?: number
           match_user1_id?: string
           match_user2_id?: string
           matched_at?: string | null
+          requested_at?: string | null
+          status?: string
         }
         Relationships: [
           {
@@ -78,37 +94,35 @@ export type Database = {
           },
         ]
       }
-      profile_images: {
+      notifications: {
         Row: {
-          image_id: number
-          image_order: number
-          image_url: string
-          profile_id: number
-          uploaded_at: string | null
+          created_at: string | null
+          from_user_id: string
+          id: string
+          message: string
+          read: boolean | null
+          type: string
+          user_id: string
         }
         Insert: {
-          image_id?: number
-          image_order?: number
-          image_url: string
-          profile_id: number
-          uploaded_at?: string | null
+          created_at?: string | null
+          from_user_id: string
+          id?: string
+          message: string
+          read?: boolean | null
+          type: string
+          user_id: string
         }
         Update: {
-          image_id?: number
-          image_order?: number
-          image_url?: string
-          profile_id?: number
-          uploaded_at?: string | null
+          created_at?: string | null
+          from_user_id?: string
+          id?: string
+          message?: string
+          read?: boolean | null
+          type?: string
+          user_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "profile_images_profile_id_fkey"
-            columns: ["profile_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["profile_id"]
-          },
-        ]
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -117,7 +131,7 @@ export type Database = {
           profile_bio: string | null
           profile_birthdate: string
           profile_created_at: string | null
-          profile_gender: string | null
+          profile_gender: Database["public"]["Enums"]["gender_enum"] | null
           profile_id: number
           profile_looking_for: string | null
           profile_non_academic_interests: string | null
@@ -131,7 +145,7 @@ export type Database = {
           profile_bio?: string | null
           profile_birthdate: string
           profile_created_at?: string | null
-          profile_gender?: string | null
+          profile_gender?: Database["public"]["Enums"]["gender_enum"] | null
           profile_id?: number
           profile_looking_for?: string | null
           profile_non_academic_interests?: string | null
@@ -145,7 +159,7 @@ export type Database = {
           profile_bio?: string | null
           profile_birthdate?: string
           profile_created_at?: string | null
-          profile_gender?: string | null
+          profile_gender?: Database["public"]["Enums"]["gender_enum"] | null
           profile_id?: number
           profile_looking_for?: string | null
           profile_non_academic_interests?: string | null
@@ -252,7 +266,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      gender_enum: "Male" | "Female" | "Prefer not to say"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -367,6 +381,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      gender_enum: ["Male", "Female", "Prefer not to say"],
+    },
   },
 } as const

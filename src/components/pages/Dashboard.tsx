@@ -31,6 +31,7 @@ interface ProfileSuggestion {
   profile_gender: string | null;
   user_priset_show_age: boolean;
   user_priset_show_bio: boolean;
+  user_priset_is_private: boolean;
   compatibility_score?: number;
   profile_images?: Array<{
     image_url: string;
@@ -101,23 +102,90 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
     }
   };
 
-  const handleConnect = async (targetUserId: string) => {
+  const handleConnect = async (targetUserId: string, isPrivate: boolean) => {
     try {
       setActionLoading(targetUserId);
 
-      const { error } = await supabaseClient
-        .from('matches')
-        .insert([{
-          match_user1_id: user.id,
-          match_user2_id: targetUserId
-        }]);
+      // Check if other user is private
+      if (isPrivate) {
+        // For private users, create an instant match (both users are matched immediately)
+        const { error: matchError } = await supabaseClient
+          .from('matches')
+          .insert([{
+            match_user1_id: user.id,
+            match_user2_id: targetUserId,
+            status: 'accepted',
+            is_mutual: true,
+            matched_at: new Date().toISOString()
+          }]);
 
-      if (error) throw error;
+        if (matchError) throw matchError;
 
-      toast({
-        title: "Connected!",
-        description: "You've successfully connected with this user",
-      });
+        // Create notification for the other user about the instant match
+        const { data: targetProfile } = await supabaseClient
+          .from('profiles')
+          .select('profile_username')
+          .eq('user_id', targetUserId)
+          .single();
+
+        const { data: currentProfile } = await supabaseClient
+          .from('profiles')
+          .select('profile_username')
+          .eq('user_id', user.id)
+          .single();
+
+        const { error: notifError } = await supabaseClient
+          .from('notifications')
+          .insert([{
+            user_id: targetUserId,
+            from_user_id: user.id,
+            type: 'match_accepted',
+            message: `${currentProfile?.profile_username || 'Someone'} has matched with you!`
+          }]);
+
+        if (notifError) console.error('Error creating notification:', notifError);
+
+        toast({
+          title: "Matched!",
+          description: `You've been instantly matched with ${targetProfile?.profile_username || 'this user'}`,
+        });
+      } else {
+        // For non-private users, create a pending match request
+        const { error: matchError } = await supabaseClient
+          .from('matches')
+          .insert([{
+            match_user1_id: user.id,
+            match_user2_id: targetUserId,
+            status: 'pending',
+            is_mutual: false,
+            requested_at: new Date().toISOString()
+          }]);
+
+        if (matchError) throw matchError;
+
+        // Create notification for the other user about the match request
+        const { data: currentProfile } = await supabaseClient
+          .from('profiles')
+          .select('profile_username')
+          .eq('user_id', user.id)
+          .single();
+
+        const { error: notifError } = await supabaseClient
+          .from('notifications')
+          .insert([{
+            user_id: targetUserId,
+            from_user_id: user.id,
+            type: 'match_request',
+            message: `${currentProfile?.profile_username || 'Someone'} wants to connect with you!`
+          }]);
+
+        if (notifError) console.error('Error creating notification:', notifError);
+
+        toast({
+          title: "Request Sent!",
+          description: "Your connection request has been sent",
+        });
+      }
 
       setSuggestions(prev => prev.filter(suggestion => suggestion.user_id !== targetUserId));
     } catch (error: any) {
@@ -246,11 +314,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
                     <div className="flex-1">
                       <CardTitle className="text-xl flex items-center justify-between">
                         {suggestion.profile_username}
-                        {suggestion.compatibility_score !== undefined && (
-                          <Badge variant="secondary" className="bg-green-100 text-green-800">
-                            {suggestion.compatibility_score} matches
-                          </Badge>
-                        )}
+                        <div className="flex gap-1">
+                          {suggestion.user_priset_is_private && (
+                            <Badge variant="secondary" className="bg-purple-100 text-purple-800">
+                              Private
+                            </Badge>
+                          )}
+                          {suggestion.compatibility_score !== undefined && (
+                            <Badge variant="secondary" className="bg-green-100 text-green-800">
+                              {suggestion.compatibility_score} matches
+                            </Badge>
+                          )}
+                        </div>
                       </CardTitle>
                       <div className="flex items-center text-sm text-muted-foreground mt-1 gap-2">
                         <span className="flex items-center gap-1">
@@ -310,7 +385,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
 
                   <div className="flex gap-2 pt-2">
                     <Button
-                      onClick={() => handleConnect(suggestion.user_id)}
+                      onClick={() => handleConnect(suggestion.user_id, suggestion.user_priset_is_private)}
                       disabled={isActionLoading}
                       className="flex-1 bg-green-600 hover:bg-green-700 text-white"
                     >
@@ -319,7 +394,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
                       ) : (
                         <>
                           <Heart className="h-4 w-4 mr-1" />
-                          Connect
+                          {suggestion.user_priset_is_private ? 'Match' : 'Request'}
                         </>
                       )}
                     </Button>
