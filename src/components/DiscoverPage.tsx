@@ -108,7 +108,8 @@ const DiscoverPage: React.FC<DiscoverPageProps> = ({ user }) => {
         .from('blocked_users')
         .insert([{
           blocker_id: user.id,
-          blocked_id: targetUserId
+          blocked_id: targetUserId,
+          blocked_user_id: targetUserId
         }])
 
       if (error) throw error
