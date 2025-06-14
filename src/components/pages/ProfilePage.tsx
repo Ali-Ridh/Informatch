@@ -127,12 +127,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, supabaseClient }) => {
         return <span className="text-primary text-2xl mb-2">♂</span>;
       case 'female':
         return <span className="text-primary text-2xl mb-2">♀</span>;
-      case 'non-binary':
-      case 'prefer not to say':
       default:
         return <UsersIcon className="h-6 w-6 text-primary mb-2" />;
     }
-  };
+  }
 
   const getMainImage = () => {
     const firstImage = profileImages.find(img => img.image_order === 1);
