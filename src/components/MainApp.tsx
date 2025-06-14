@@ -46,11 +46,11 @@ const MainApp: React.FC<MainAppProps> = ({ user }) => {
   const renderActivePage = () => {
     switch (activePage) {
       case 'dashboard':
-        return <Dashboard user={user} supabaseClient={supabase}/>; {/* Assuming Dashboard might need supabaseClient */}
+        return <Dashboard user={user} supabaseClient={supabase} />; {/* Assuming Dashboard might need supabaseClient */}
       case 'notifications':
         return <Notifications user={user} />; {/* Assuming Notifications might need supabaseClient */}
       case 'friends':
-        return <FriendList user={user} />; {/* Assuming FriendList might need supabaseClient */}
+        return <FriendList user={user} supabaseClient={supabase} />; {/* Assuming FriendList might need supabaseClient */}
       case 'settings':
         return <SettingsPage user={user} supabaseClient={supabase} />; // Passing supabaseClient to SettingsPage
       case 'profile':
