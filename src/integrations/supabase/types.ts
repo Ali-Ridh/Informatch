@@ -124,6 +124,38 @@ export type Database = {
         }
         Relationships: []
       }
+      profile_images: {
+        Row: {
+          created_at: string | null
+          image_id: number
+          image_order: number
+          image_url: string
+          profile_id: number
+        }
+        Insert: {
+          created_at?: string | null
+          image_id?: number
+          image_order?: number
+          image_url: string
+          profile_id: number
+        }
+        Update: {
+          created_at?: string | null
+          image_id?: number
+          image_order?: number
+          image_url?: string
+          profile_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profile_images_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["profile_id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           profile_academic_interests: string | null
