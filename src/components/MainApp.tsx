@@ -48,7 +48,7 @@ const MainApp: React.FC<MainAppProps> = ({ user }) => {
       case 'dashboard':
         return <Dashboard user={user} supabaseClient={supabase} />; {/* Assuming Dashboard might need supabaseClient */}
       case 'notifications':
-        return <Notifications user={user} />; {/* Assuming Notifications might need supabaseClient */}
+        return <Notifications user={user} supabaseClient={supabase} />; {/* Assuming Notifications might need supabaseClient */}
       case 'friends':
         return <FriendList user={user} supabaseClient={supabase} />; {/* Assuming FriendList might need supabaseClient */}
       case 'settings':

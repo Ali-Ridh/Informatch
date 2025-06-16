@@ -1,3 +1,4 @@
+// src/components/pages/Dashboard.tsx
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,7 +17,7 @@ import {
   School,
   HeartHandshake,
   Search,
-} from 'lucide-react'; // No specific Gender icons needed here
+} from 'lucide-react';
 
 interface ProfileSuggestion {
   profile_id: number;
@@ -57,16 +58,21 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
 
       const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
       if (sessionError || !sessionData.session) {
-        throw new Error('User session not found.');
+        console.error("Dashboard: User session not found before Edge Function invoke.", sessionError);
+        throw new Error('User session not found. Please log in.');
       }
 
       const { data, error } = await supabaseClient.functions.invoke('get-match-suggestions', {
         headers: {
           Authorization: `Bearer ${sessionData.session.access_token}`
-        }
+        },
+        body: { current_user_id: user.id }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Edge Function invocation error:', error);
+        throw new Error(error.message || "Failed to fetch match suggestions from server.");
+      }
 
       setSuggestions(data.suggestions || []);
     } catch (error: any) {
@@ -85,20 +91,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
     try {
       setActionLoading(targetUserId);
 
+      // The database expects the UUIDs of the two users.
       const { error } = await supabaseClient
         .from('matches')
         .insert([{
-          match_user1_id: user.id,
-          match_user2_id: targetUserId
+          match_user1_id: user.id,      // Correct column name and data
+          match_user2_id: targetUserId, // Correct column name and data
         }]);
 
       if (error) throw error;
 
       toast({
         title: "Connected!",
-        description: "You've successfully connected with this user",
+        description: "You've successfully sent a connection request.",
       });
 
+      // Filter the suggestions list by user_id
       setSuggestions(prev => prev.filter(suggestion => suggestion.user_id !== targetUserId));
     } catch (error: any) {
       console.error('Error creating match:', error);
@@ -143,22 +151,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
     }
   };
 
-  // Helper function to parse comma-separated interests
   const parseInterests = (interests: string | null) => {
     return interests ? interests.split(',').map(i => i.trim()).filter(i => i) : [];
   };
 
-  // Helper function to get gender icon/symbol (using Unicode)
   const getGenderIcon = (gender: string | null): React.ReactNode => {
     switch (gender?.toLowerCase()) {
       case 'male':
-        return <span className="text-primary text-xl">♂</span>; // Unicode Male symbol
+        return <span className="text-primary text-xl">♂</span>;
       case 'female':
-        return <span className="text-primary text-xl">♀</span>; // Unicode Female symbol
+        return <span className="text-primary text-xl">♀</span>;
       case 'non-binary':
       case 'prefer not to say':
       default:
-        return <Users className="h-5 w-5 text-primary" />; // Generic icon for other options or default
+        return <Users className="h-5 w-5 text-primary" />;
     }
   };
 
@@ -197,10 +203,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
           {suggestions.map((suggestion) => {
             const academicInterests = parseInterests(suggestion.profile_academic_interests);
             const nonAcademicInterests = parseInterests(suggestion.profile_non_academic_interests);
-            
-            // Age is calculated but not used here due to privacy setting and previous request
-            // const age = calculateAge(suggestion.profile_birthdate); 
-            const isActionLoading = actionLoading === suggestion.user_id;
+            const isActionLoading = actionLoading === suggestion.user_id; // Corrected to check against user_id
 
             return (
               <Card key={suggestion.profile_id} className="overflow-hidden hover:shadow-lg transition-shadow">
@@ -222,12 +225,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
                           </Badge>
                         )}
                       </CardTitle>
-                      {/* Gender and conditionally shown Birthdate */}
                       <div className="flex items-center text-sm text-muted-foreground mt-1 gap-2">
                         <span className="flex items-center gap-1">
                           {getGenderIcon(suggestion.profile_gender)} {suggestion.profile_gender || 'N/A'}
                         </span>
-                        {/* Only show birthdate if user_priset_show_age is true for the suggested profile */}
                         {suggestion.user_priset_show_age && suggestion.profile_birthdate && (
                           <>
                             <Separator orientation="vertical" className="h-4" />
@@ -240,12 +241,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
                 </CardHeader>
 
                 <CardContent className="space-y-4 pt-3">
-                  {/*
-                    The bio is added here. Its visibility is controlled by
-                    the `user_priset_show_bio` privacy setting from the suggested user's profile.
-                    If you want to always show the bio regardless of privacy,
-                    you would remove `suggestion.user_priset_show_bio &&` from the condition.
-                  */}
                   {suggestion.user_priset_show_bio && suggestion.profile_bio && (
                     <div>
                       <h4 className="font-medium text-sm text-muted-foreground mb-1">About</h4>
@@ -288,7 +283,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
 
                   <div className="flex gap-2 pt-2">
                     <Button
-                      onClick={() => handleConnect(suggestion.user_id)}
+                      onClick={() => handleConnect(suggestion.user_id)} // Corrected: Pass user_id
                       disabled={isActionLoading}
                       className="flex-1 bg-green-600 hover:bg-green-700 text-white"
                     >
