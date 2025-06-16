@@ -17,7 +17,17 @@ import {
   School,
   HeartHandshake,
   Search,
+  MoreHorizontal,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import BlockUserDialog from '@/components/BlockUserDialog';
 
 interface ProfileSuggestion {
   profile_id: number;
@@ -33,6 +43,7 @@ interface ProfileSuggestion {
   user_priset_show_age: boolean;
   user_priset_show_bio: boolean;
   compatibility_score?: number;
+  main_image_url?: string | null;
 }
 
 interface DashboardProps {
@@ -44,13 +55,31 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
   const [suggestions, setSuggestions] = useState<ProfileSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [blockedUsers, setBlockedUsers] = useState<Set<string>>(new Set());
   const { toast } = useToast();
 
   useEffect(() => {
     if (user?.id) {
       fetchSuggestions();
+      fetchBlockedUsers();
     }
   }, [user, supabaseClient]);
+
+  const fetchBlockedUsers = async () => {
+    try {
+      const { data, error } = await supabaseClient
+        .from('blocked_users')
+        .select('blocked_id')
+        .eq('blocker_id', user.id);
+
+      if (error) throw error;
+
+      const blockedIds = new Set(data.map((block: any) => block.blocked_id));
+      setBlockedUsers(blockedIds);
+    } catch (error: any) {
+      console.error('Error fetching blocked users:', error);
+    }
+  };
 
   const fetchSuggestions = async () => {
     try {
@@ -91,12 +120,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
     try {
       setActionLoading(targetUserId);
 
-      // The database expects the UUIDs of the two users.
       const { error } = await supabaseClient
         .from('matches')
         .insert([{
-          match_user1_id: user.id,      // Correct column name and data
-          match_user2_id: targetUserId, // Correct column name and data
+          match_user1_id: user.id,
+          match_user2_id: targetUserId,
         }]);
 
       if (error) throw error;
@@ -106,7 +134,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
         description: "You've successfully sent a connection request.",
       });
 
-      // Filter the suggestions list by user_id
       setSuggestions(prev => prev.filter(suggestion => suggestion.user_id !== targetUserId));
     } catch (error: any) {
       console.error('Error creating match:', error);
@@ -138,12 +165,49 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
         description: "This user will no longer appear in your suggestions",
       });
 
+      // Update local state
+      setBlockedUsers(prev => new Set([...prev, targetUserId]));
       setSuggestions(prev => prev.filter(suggestion => suggestion.user_id !== targetUserId));
     } catch (error: any) {
       console.error('Error blocking user:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to block user",
+        variant: "destructive",
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleUnblock = async (targetUserId: string) => {
+    try {
+      setActionLoading(targetUserId);
+
+      const { error } = await supabaseClient
+        .from('blocked_users')
+        .delete()
+        .eq('blocker_id', user.id)
+        .eq('blocked_id', targetUserId);
+
+      if (error) throw error;
+
+      toast({
+        title: "User unblocked",
+        description: "This user can now see your profile again",
+      });
+
+      // Update local state
+      setBlockedUsers(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(targetUserId);
+        return newSet;
+      });
+    } catch (error: any) {
+      console.error('Error unblocking user:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to unblock user",
         variant: "destructive",
       });
     } finally {
@@ -203,28 +267,69 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
           {suggestions.map((suggestion) => {
             const academicInterests = parseInterests(suggestion.profile_academic_interests);
             const nonAcademicInterests = parseInterests(suggestion.profile_non_academic_interests);
-            const isActionLoading = actionLoading === suggestion.user_id; // Corrected to check against user_id
+            const isActionLoading = actionLoading === suggestion.user_id;
+            const isBlocked = blockedUsers.has(suggestion.user_id);
+
+            // Use main_image_url first, then profile_avatar_url as fallback
+            const avatarUrl = suggestion.main_image_url || suggestion.profile_avatar_url;
 
             return (
               <Card key={suggestion.profile_id} className="overflow-hidden hover:shadow-lg transition-shadow">
                 <CardHeader className="pb-3">
                   <div className="flex items-center gap-4">
-                    {/* Avatar */}
                     <Avatar className="h-16 w-16 border-2 border-muted-foreground">
-                      <AvatarImage src={suggestion.profile_avatar_url || undefined} alt={suggestion.profile_username} />
+                      <AvatarImage src={avatarUrl || undefined} alt={suggestion.profile_username} />
                       <AvatarFallback className="bg-muted text-muted-foreground">
                         {suggestion.profile_username.substring(0, 2).toUpperCase() || <UserCircle className="h-10 w-10" />}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
-                      <CardTitle className="text-xl flex items-center justify-between">
-                        {suggestion.profile_username}
-                        {suggestion.compatibility_score !== undefined && (
-                          <Badge variant="secondary" className="bg-green-100 text-green-800">
-                            {suggestion.compatibility_score} matches
-                          </Badge>
-                        )}
-                      </CardTitle>
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-xl">
+                          {suggestion.profile_username}
+                        </CardTitle>
+                        <div className="flex items-center gap-2">
+                          {suggestion.compatibility_score !== undefined && (
+                            <Badge variant="secondary" className="bg-green-100 text-green-800">
+                              {suggestion.compatibility_score} matches
+                            </Badge>
+                          )}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem asChild>
+                                <BlockUserDialog
+                                  username={suggestion.profile_username}
+                                  isBlocked={isBlocked}
+                                  onBlock={() => handleBlock(suggestion.user_id)}
+                                  onUnblock={() => handleUnblock(suggestion.user_id)}
+                                  loading={isActionLoading}
+                                >
+                                  <div className="w-full cursor-pointer">
+                                    {isBlocked ? (
+                                      <>
+                                        <UserX className="h-4 w-4 mr-2 inline" />
+                                        Unblock User
+                                      </>
+                                    ) : (
+                                      <>
+                                        <UserX className="h-4 w-4 mr-2 inline" />
+                                        Block User
+                                      </>
+                                    )}
+                                  </div>
+                                </BlockUserDialog>
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </div>
                       <div className="flex items-center text-sm text-muted-foreground mt-1 gap-2">
                         <span className="flex items-center gap-1">
                           {getGenderIcon(suggestion.profile_gender)} {suggestion.profile_gender || 'N/A'}
@@ -283,8 +388,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
 
                   <div className="flex gap-2 pt-2">
                     <Button
-                      onClick={() => handleConnect(suggestion.user_id)} // Corrected: Pass user_id
-                      disabled={isActionLoading}
+                      onClick={() => handleConnect(suggestion.user_id)}
+                      disabled={isActionLoading || isBlocked}
                       className="flex-1 bg-green-600 hover:bg-green-700 text-white"
                     >
                       {isActionLoading ? (
@@ -293,21 +398,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
                         <>
                           <Heart className="h-4 w-4 mr-1" />
                           Connect
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      onClick={() => handleBlock(suggestion.user_id)}
-                      disabled={isActionLoading}
-                      variant="outline"
-                      className="flex-1 text-red-600 border-red-200 hover:bg-red-50"
-                    >
-                      {isActionLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <>
-                          <UserX className="h-4 w-4 mr-1" />
-                          Block
                         </>
                       )}
                     </Button>
