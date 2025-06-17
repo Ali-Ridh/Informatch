@@ -116,30 +116,34 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
     }
   };
 
-  const handleConnect = async (targetUserId: string) => {
+  const handleConnect = async (targetUserId: string, targetUsername: string) => {
     try {
       setActionLoading(targetUserId);
 
+      // Create notification instead of direct match
       const { error } = await supabaseClient
-        .from('matches')
+        .from('notifications')
         .insert([{
-          match_user1_id: user.id,
-          match_user2_id: targetUserId,
+          user_id: targetUserId, // The user receiving the notification
+          from_user_id: user.id, // The user sending the request
+          type: 'match_request',
+          message: `wants to connect with you!`,
+          read: false
         }]);
 
       if (error) throw error;
 
       toast({
-        title: "Connected!",
-        description: "You've successfully sent a connection request.",
+        title: "Request Sent!",
+        description: `Your connection request has been sent to ${targetUsername}.`,
       });
 
       setSuggestions(prev => prev.filter(suggestion => suggestion.user_id !== targetUserId));
     } catch (error: any) {
-      console.error('Error creating match:', error);
+      console.error('Error sending match request:', error);
       toast({
         title: "Error",
-        description: error.message || "Failed to create connection",
+        description: error.message || "Failed to send connection request",
         variant: "destructive",
       });
     } finally {
@@ -388,7 +392,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, supabaseClient }) => {
 
                   <div className="flex gap-2 pt-2">
                     <Button
-                      onClick={() => handleConnect(suggestion.user_id)}
+                      onClick={() => handleConnect(suggestion.user_id, suggestion.profile_username)}
                       disabled={isActionLoading || isBlocked}
                       className="flex-1 bg-green-600 hover:bg-green-700 text-white"
                     >

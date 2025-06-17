@@ -8,20 +8,20 @@ import { useToast } from '@/hooks/use-toast';
 import { User } from '@supabase/supabase-js';
 import { formatDistanceToNowStrict } from 'date-fns';
 
-interface RequesterProfileData {
-  profile_id: number;
+interface MatchRequestNotification {
+  id: string;
   user_id: string;
-  profile_username: string;
-  profile_avatar_url: string | null;
-}
-
-interface NotificationRequest {
-  match_id: number;
-  match_user1_id: string; // The user who sent the request (UUID)
-  match_user2_id: string; // The current user receiving the request (UUID)
-  status: 'pending' | 'accepted' | 'rejected';
-  requested_at: string;
-  requester_profile: RequesterProfileData | null; // This will hold the flattened profile data
+  from_user_id: string;
+  type: string;
+  message: string;
+  read: boolean;
+  created_at: string;
+  match_request_id: string;
+  requester_profile: {
+    profile_username: string;
+    profile_avatar_url: string | null;
+    main_image_url?: string | null;
+  } | null;
 }
 
 interface NotificationsProps {
@@ -30,9 +30,9 @@ interface NotificationsProps {
 }
 
 const Notifications: React.FC<NotificationsProps> = ({ user, supabaseClient }) => {
-  const [notifications, setNotifications] = useState<NotificationRequest[]>([]);
+  const [notifications, setNotifications] = useState<MatchRequestNotification[]>([]);
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState<number | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -43,32 +43,22 @@ const Notifications: React.FC<NotificationsProps> = ({ user, supabaseClient }) =
 
     fetchNotifications();
 
+    // Set up real-time subscription for new notifications
     const channel = supabaseClient
       .channel('notifications_channel')
       .on('postgres_changes', {
           event: 'INSERT',
           schema: 'public',
-          table: 'matches',
-          filter: `match_user2_id=eq.${user.id}`
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`
       }, async payload => {
-          if (payload.new.status === 'pending') {
-              console.log('Realtime: New pending match inserted!', payload.new);
+          if (payload.new.type === 'match_request') {
+              console.log('Realtime: New match request notification!', payload.new);
               await fetchNotifications();
               toast({
                   title: "New Connection Request!",
-                  description: `New request from a user!`,
+                  description: `Someone wants to connect with you!`,
               });
-          }
-      })
-      .on('postgres_changes', {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'matches',
-          filter: `match_user2_id=eq.${user.id}`
-      }, async payload => {
-          if (payload.old.status === 'pending' && payload.new.status !== 'pending') {
-              console.log('Realtime: Match status updated!', payload.new);
-              await fetchNotifications();
           }
       })
       .subscribe();
@@ -83,62 +73,63 @@ const Notifications: React.FC<NotificationsProps> = ({ user, supabaseClient }) =
     try {
       console.log('--- Fetching notifications for user ID:', user.id, '---');
 
-      // FIX: Removed all SQL comments from the select string
       const { data, error } = await supabaseClient
-        .from('matches')
+        .from('notifications')
         .select(`
-          match_id,
-          match_user1_id,
-          match_user2_id,
-          status,
-          requested_at,
-          requester_data:users!match_user1_id(
+          id,
+          user_id,
+          from_user_id,
+          type,
+          message,
+          read,
+          created_at,
+          match_request_id,
+          requester_data:users!from_user_id(
             user_id,
             profiles(
-              profile_id,
-              user_id,
               profile_username,
-              profile_avatar_url
+              profile_avatar_url,
+              profile_images(image_url, image_order)
             )
           )
         `)
-        .eq('match_user2_id', user.id)
-        .eq('status', 'pending')
-        .order('requested_at', { ascending: false });
+        .eq('user_id', user.id)
+        .eq('type', 'match_request')
+        .eq('read', false)
+        .order('created_at', { ascending: false });
 
       console.log('Supabase query raw data:', data);
       console.log('Supabase query error:', error);
 
       if (error) {
-        console.error('Supabase fetchNotifications error (after query):', error);
+        console.error('Supabase fetchNotifications error:', error);
         throw new Error(error.message || 'Failed to fetch notifications.');
       }
 
-      const formattedNotifications: NotificationRequest[] = data.map((item: any) => {
+      const formattedNotifications: MatchRequestNotification[] = data.map((item: any) => {
         const profile = item.requester_data?.profiles;
-        
-        const actualProfile = Array.isArray(profile) ? profile[0] : profile; // Ensure single profile if array
+        const actualProfile = Array.isArray(profile) ? profile[0] : profile;
+
+        // Get the main image (first image with order 1)
+        const profileImages = actualProfile?.profile_images || [];
+        const mainImage = profileImages.find((img: any) => img.image_order === 1);
 
         return {
-          match_id: item.match_id,
-          match_user1_id: item.match_user1_id,
-          match_user2_id: item.match_user2_id,
-          status: item.status,
-          requested_at: item.requested_at,
+          id: item.id,
+          user_id: item.user_id,
+          from_user_id: item.from_user_id,
+          type: item.type,
+          message: item.message,
+          read: item.read,
+          created_at: item.created_at,
+          match_request_id: item.match_request_id,
           requester_profile: actualProfile ? {
-            profile_id: actualProfile.profile_id,
-            user_id: actualProfile.user_id,
             profile_username: actualProfile.profile_username,
             profile_avatar_url: actualProfile.profile_avatar_url,
+            main_image_url: mainImage?.image_url || null,
           } : null,
         };
-      }).filter(item => {
-        const isValid = item.requester_profile !== null;
-        if (!isValid) {
-          console.warn('Notification skipped due to missing requester_profile:', item);
-        }
-        return isValid;
-      });
+      }).filter(item => item.requester_profile !== null);
 
       console.log('Formatted notifications for display:', formattedNotifications);
 
@@ -155,32 +146,69 @@ const Notifications: React.FC<NotificationsProps> = ({ user, supabaseClient }) =
     }
   };
 
-  const handleAction = async (matchId: number, newStatus: 'accepted' | 'rejected') => {
-    setActionLoading(matchId);
+  const handleAcceptRequest = async (notificationId: string, fromUserId: string, requesterUsername: string) => {
+    setActionLoading(notificationId);
     try {
-      const { error } = await supabaseClient
+      // Create match record
+      const { error: matchError } = await supabaseClient
         .from('matches')
-        .update({ status: newStatus })
-        .eq('match_id', matchId)
-        .eq('match_user2_id', user.id);
+        .insert([{
+          match_user1_id: fromUserId, // The user who sent the request
+          match_user2_id: user.id,    // The user accepting the request
+        }]);
 
-      if (error) {
-        console.error('Supabase handleAction error:', error);
-        throw new Error(error.message || `Failed to ${newStatus} request.`);
-      }
+      if (matchError) throw matchError;
+
+      // Delete the notification
+      const { error: deleteError } = await supabaseClient
+        .from('notifications')
+        .delete()
+        .eq('id', notificationId);
+
+      if (deleteError) throw deleteError;
 
       toast({
-        title: newStatus === 'accepted' ? "Request Accepted!" : "Request Rejected!",
-        description: newStatus === 'accepted' ? "You are now connected." : "The request has been declined.",
+        title: "Request Accepted!",
+        description: `You are now connected with ${requesterUsername}.`,
       });
 
-      setNotifications(prev => prev.filter(notification => notification.match_id !== matchId));
+      setNotifications(prev => prev.filter(notification => notification.id !== notificationId));
 
     } catch (error: any) {
-      console.error(`Caught error in handleAction (${newStatus}):`, error);
+      console.error('Error accepting match request:', error);
       toast({
         title: "Error",
-        description: `Failed to ${newStatus} request: ` + error.message,
+        description: `Failed to accept request: ${error.message}`,
+        variant: "destructive",
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleRejectRequest = async (notificationId: string, requesterUsername: string) => {
+    setActionLoading(notificationId);
+    try {
+      // Simply delete the notification (no match created)
+      const { error } = await supabaseClient
+        .from('notifications')
+        .delete()
+        .eq('id', notificationId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Request Rejected",
+        description: `Connection request from ${requesterUsername} has been declined.`,
+      });
+
+      setNotifications(prev => prev.filter(notification => notification.id !== notificationId));
+
+    } catch (error: any) {
+      console.error('Error rejecting match request:', error);
+      toast({
+        title: "Error",
+        description: `Failed to reject request: ${error.message}`,
         variant: "destructive",
       });
     } finally {
@@ -204,7 +232,7 @@ const Notifications: React.FC<NotificationsProps> = ({ user, supabaseClient }) =
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Notifications</h1>
         <p className="text-lg text-muted-foreground">
-          See who wants to connect with you
+          See who wants to connect with you ({notifications.length} pending)
         </p>
       </div>
 
@@ -214,51 +242,64 @@ const Notifications: React.FC<NotificationsProps> = ({ user, supabaseClient }) =
             <Bell className="mx-auto h-16 w-16 text-muted-foreground mb-4" />
             <h3 className="text-xl font-semibold mb-2">No notifications yet</h3>
             <p className="text-muted-foreground">
-              When someone wants to match with you, you'll see their requests here.
+              When someone wants to connect with you, you'll see their requests here.
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-4">
-          {notifications.map((notification) => (
-            <Card key={notification.match_id} className="p-4 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <Avatar className="h-12 w-12 border-2 border-primary">
-                  <AvatarImage src={notification.requester_profile?.profile_avatar_url || undefined} alt={notification.requester_profile?.profile_username || 'User'} />
-                  <AvatarFallback className="bg-muted text-muted-foreground">
-                    {notification.requester_profile?.profile_username?.substring(0, 2).toUpperCase() || <UserCircle className="h-8 w-8" />}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="font-semibold text-lg">
-                    {notification.requester_profile?.profile_username || 'Unknown User'} wants to connect!
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Requested {formatDistanceToNowStrict(new Date(notification.requested_at), { addSuffix: true })}
-                  </p>
+          {notifications.map((notification) => {
+            const isActionLoading = actionLoading === notification.id;
+            const avatarUrl = notification.requester_profile?.main_image_url || notification.requester_profile?.profile_avatar_url;
+
+            return (
+              <Card key={notification.id} className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <Avatar className="h-12 w-12 border-2 border-primary">
+                    <AvatarImage src={avatarUrl || undefined} alt={notification.requester_profile?.profile_username || 'User'} />
+                    <AvatarFallback className="bg-muted text-muted-foreground">
+                      {notification.requester_profile?.profile_username?.substring(0, 2).toUpperCase() || <UserCircle className="h-8 w-8" />}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="font-semibold text-lg">
+                      {notification.requester_profile?.profile_username || 'Unknown User'} {notification.message}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {formatDistanceToNowStrict(new Date(notification.created_at), { addSuffix: true })}
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="default"
-                  size="icon"
-                  onClick={() => handleAction(notification.match_id, 'accepted')}
-                  disabled={actionLoading === notification.match_id}
-                >
-                  {actionLoading === notification.match_id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => handleAction(notification.match_id, 'rejected')}
-                  disabled={actionLoading === notification.match_id}
-                  className="text-red-600 border-red-200 hover:bg-red-50"
-                >
-                  {actionLoading === notification.match_id ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
-                </Button>
-              </div>
-            </Card>
-          ))}
+                <div className="flex gap-2">
+                  <Button
+                    variant="default"
+                    size="icon"
+                    onClick={() => handleAcceptRequest(
+                      notification.id, 
+                      notification.from_user_id, 
+                      notification.requester_profile?.profile_username || 'User'
+                    )}
+                    disabled={isActionLoading}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    {isActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handleRejectRequest(
+                      notification.id, 
+                      notification.requester_profile?.profile_username || 'User'
+                    )}
+                    disabled={isActionLoading}
+                    className="text-red-600 border-red-200 hover:bg-red-50"
+                  >
+                    {isActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

@@ -57,7 +57,7 @@ const FriendList: React.FC<FriendListProps> = ({ user, supabaseClient }) => {
     fetchFriends();
     fetchBlockedUsers();
 
-    // Set up real-time subscription for accepted matches
+    // Set up real-time subscription for matches (only accepted matches now)
     const channel = supabaseClient
       .channel('friends_channel')
       .on('postgres_changes', {
@@ -66,10 +66,8 @@ const FriendList: React.FC<FriendListProps> = ({ user, supabaseClient }) => {
           table: 'matches',
           filter: `or(match_user1_id=eq.${user.id},match_user2_id=eq.${user.id})`
       }, async payload => {
-          if (payload.new?.status === 'accepted' || payload.eventType === 'DELETE' || (payload.old?.status === 'accepted' && payload.new?.status !== 'accepted')) {
-              console.log('Realtime: Match event detected, re-fetching friends:', payload.eventType, payload.new);
-              await fetchFriends();
-          }
+          console.log('Realtime: Match event detected, re-fetching friends:', payload.eventType, payload.new);
+          await fetchFriends();
       })
       .subscribe();
 
@@ -97,15 +95,14 @@ const FriendList: React.FC<FriendListProps> = ({ user, supabaseClient }) => {
   const fetchFriends = async () => {
     setLoading(true);
     try {
+      // Only fetch accepted matches (no status column needed since all matches are accepted)
       const { data, error } = await supabaseClient
         .from('matches')
         .select(`
           match_id,
           match_user1_id,
           match_user2_id,
-          status,
           matched_at,
-          requested_at,
           user1_data:users!match_user1_id(
             user_id,
             user_priset_show_age,
@@ -141,7 +138,6 @@ const FriendList: React.FC<FriendListProps> = ({ user, supabaseClient }) => {
             )
           )
         `)
-        .eq('status', 'accepted')
         .or(`match_user1_id.eq.${user.id},match_user2_id.eq.${user.id}`);
 
       if (error) {

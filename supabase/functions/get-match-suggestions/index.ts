@@ -109,13 +109,14 @@ Deno.serve(async (req) => {
 
     const connectedUserIds = new Set();
     const blockedUserIds = new Set();
+    const requestedUserIds = new Set();
     
     connectedUserIds.add(current_user_id); // Add current user's own UUID to prevent self-suggestion
 
-    // Get existing matches (both pending and accepted)
+    // Get existing matches (only accepted matches now)
     const { data: existingMatches, error: matchesError } = await supabaseClient
       .from('matches')
-      .select('match_user1_id, match_user2_id, status')
+      .select('match_user1_id, match_user2_id')
       .or(`match_user1_id.eq.${current_user_id},match_user2_id.eq.${current_user_id}`);
 
     if (matchesError) {
@@ -132,10 +133,34 @@ Deno.serve(async (req) => {
     }
 
     existingMatches.forEach((match) => {
-      if (match.status === 'accepted' || match.status === 'pending') {
-        connectedUserIds.add(match.match_user1_id);
-        connectedUserIds.add(match.match_user2_id);
-      }
+      connectedUserIds.add(match.match_user1_id);
+      connectedUserIds.add(match.match_user2_id);
+    });
+
+    // Get pending match requests (from notifications table)
+    const { data: pendingRequests, error: requestsError } = await supabaseClient
+      .from('notifications')
+      .select('user_id, from_user_id')
+      .eq('type', 'match_request')
+      .eq('read', false)
+      .or(`user_id.eq.${current_user_id},from_user_id.eq.${current_user_id}`);
+
+    if (requestsError) {
+      console.error('Error fetching pending requests in Edge Function:', requestsError.message);
+      return new Response(JSON.stringify({
+        error: 'Error fetching pending requests.'
+      }), {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        },
+        status: 500
+      });
+    }
+
+    pendingRequests.forEach((request) => {
+      requestedUserIds.add(request.user_id);
+      requestedUserIds.add(request.from_user_id);
     });
 
     // Get blocked users (users blocked by current user)
@@ -207,6 +232,11 @@ Deno.serve(async (req) => {
 
     if (blockedUserIds.size > 0) {
       const ids = Array.from(blockedUserIds).join(',');
+      query = query.filter('user_id', 'not.in', `(${ids})`);
+    }
+
+    if (requestedUserIds.size > 0) {
+      const ids = Array.from(requestedUserIds).join(',');
       query = query.filter('user_id', 'not.in', `(${ids})`);
     }
 
