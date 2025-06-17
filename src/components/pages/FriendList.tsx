@@ -33,7 +33,6 @@ interface Friend {
   matched_at: string;
   user_priset_show_age: boolean;
   user_priset_show_bio: boolean;
-  main_image_url?: string | null;
 }
 
 interface FriendListProps {
@@ -92,10 +91,9 @@ const FriendList: React.FC<FriendListProps> = ({ user, supabaseClient }) => {
     }
   };
 
-  const fetchFriends = async () => {
+const fetchFriends = async () => {
     setLoading(true);
     try {
-      // Only fetch accepted matches (no status column needed since all matches are accepted)
       const { data, error } = await supabaseClient
         .from('matches')
         .select(`
@@ -116,8 +114,7 @@ const FriendList: React.FC<FriendListProps> = ({ user, supabaseClient }) => {
               profile_non_academic_interests,
               profile_avatar_url,
               profile_gender,
-              profile_looking_for,
-              profile_images(image_url, image_order)
+              profile_looking_for
             )
           ),
           user2_data:users!match_user2_id(
@@ -133,17 +130,13 @@ const FriendList: React.FC<FriendListProps> = ({ user, supabaseClient }) => {
               profile_non_academic_interests,
               profile_avatar_url,
               profile_gender,
-              profile_looking_for,
-              profile_images(image_url, image_order)
+              profile_looking_for
             )
           )
         `)
         .or(`match_user1_id.eq.${user.id},match_user2_id.eq.${user.id}`);
 
-      if (error) {
-        console.error('Supabase fetchFriends error:', error);
-        throw new Error(error.message || 'Failed to fetch friend list.');
-      }
+      if (error) throw new Error(error.message || 'Failed to fetch friend list.');
 
       const friendsData: Friend[] = (data || []).map((match: any) => {
         const isUser1 = match.match_user1_id === user.id;
@@ -152,14 +145,7 @@ const FriendList: React.FC<FriendListProps> = ({ user, supabaseClient }) => {
 
         const actualFriendProfile = Array.isArray(friendProfileData) ? friendProfileData[0] : friendProfileData;
 
-        if (!actualFriendProfile || !friendUserData) {
-          console.warn('Friend entry skipped due to missing profile or user data (RLS issue likely):', match);
-          return null;
-        }
-
-        // Get the main image (first image with order 1)
-        const profileImages = actualFriendProfile.profile_images || [];
-        const mainImage = profileImages.find((img: any) => img.image_order === 1);
+        if (!actualFriendProfile || !friendUserData) return null;
 
         return {
           match_id: match.match_id,
@@ -175,13 +161,11 @@ const FriendList: React.FC<FriendListProps> = ({ user, supabaseClient }) => {
           matched_at: match.matched_at,
           user_priset_show_age: friendUserData.user_priset_show_age,
           user_priset_show_bio: friendUserData.user_priset_show_bio,
-          main_image_url: mainImage?.image_url || null,
         };
-      }).filter(Boolean);
+      }).filter(Boolean) as Friend[];
 
       setFriends(friendsData);
     } catch (error: any) {
-      console.error('Caught error in fetchFriends:', error);
       toast({
         title: "Error",
         description: "Failed to fetch friends: " + error.message,
@@ -191,7 +175,7 @@ const FriendList: React.FC<FriendListProps> = ({ user, supabaseClient }) => {
       setLoading(false);
     }
   };
-
+  
   const parseInterests = (interests: string | null) => {
     return interests ? interests.split(',').map(i => i.trim()).filter(i => i) : [];
   };
@@ -354,8 +338,7 @@ const FriendList: React.FC<FriendListProps> = ({ user, supabaseClient }) => {
             const isActionLoading = actionLoading === friend.user_id;
             const isBlocked = blockedUsers.has(friend.user_id);
 
-            // Use main_image_url first, then profile_avatar_url as fallback
-            const avatarUrl = friend.main_image_url || friend.profile_avatar_url;
+            const avatarUrl = friend.profile_avatar_url;
 
             return (
               <Card key={friend.match_id} className="overflow-hidden hover:shadow-lg transition-shadow">

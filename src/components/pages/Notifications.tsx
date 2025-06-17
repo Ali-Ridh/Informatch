@@ -20,7 +20,6 @@ interface MatchRequestNotification {
   requester_profile: {
     profile_username: string;
     profile_avatar_url: string | null;
-    main_image_url?: string | null;
   } | null;
 }
 
@@ -68,11 +67,9 @@ const Notifications: React.FC<NotificationsProps> = ({ user, supabaseClient }) =
     };
   }, [user?.id, supabaseClient, toast]);
 
-  const fetchNotifications = async () => {
+const fetchNotifications = async () => {
     setLoading(true);
     try {
-      console.log('--- Fetching notifications for user ID:', user.id, '---');
-
       const { data, error } = await supabaseClient
         .from('notifications')
         .select(`
@@ -88,8 +85,7 @@ const Notifications: React.FC<NotificationsProps> = ({ user, supabaseClient }) =
             user_id,
             profiles(
               profile_username,
-              profile_avatar_url,
-              profile_images(image_url, image_order)
+              profile_avatar_url
             )
           )
         `)
@@ -98,21 +94,11 @@ const Notifications: React.FC<NotificationsProps> = ({ user, supabaseClient }) =
         .eq('read', false)
         .order('created_at', { ascending: false });
 
-      console.log('Supabase query raw data:', data);
-      console.log('Supabase query error:', error);
-
-      if (error) {
-        console.error('Supabase fetchNotifications error:', error);
-        throw new Error(error.message || 'Failed to fetch notifications.');
-      }
+      if (error) throw new Error(error.message || 'Failed to fetch notifications.');
 
       const formattedNotifications: MatchRequestNotification[] = data.map((item: any) => {
         const profile = item.requester_data?.profiles;
         const actualProfile = Array.isArray(profile) ? profile[0] : profile;
-
-        // Get the main image (first image with order 1)
-        const profileImages = actualProfile?.profile_images || [];
-        const mainImage = profileImages.find((img: any) => img.image_order === 1);
 
         return {
           id: item.id,
@@ -126,16 +112,12 @@ const Notifications: React.FC<NotificationsProps> = ({ user, supabaseClient }) =
           requester_profile: actualProfile ? {
             profile_username: actualProfile.profile_username,
             profile_avatar_url: actualProfile.profile_avatar_url,
-            main_image_url: mainImage?.image_url || null,
           } : null,
         };
       }).filter(item => item.requester_profile !== null);
 
-      console.log('Formatted notifications for display:', formattedNotifications);
-
       setNotifications(formattedNotifications || []);
     } catch (error: any) {
-      console.error('Caught error in fetchNotifications:', error);
       toast({
         title: "Error",
         description: "Failed to fetch notifications: " + error.message,
@@ -145,7 +127,7 @@ const Notifications: React.FC<NotificationsProps> = ({ user, supabaseClient }) =
       setLoading(false);
     }
   };
-
+  
   const handleAcceptRequest = async (notificationId: string, fromUserId: string, requesterUsername: string) => {
     setActionLoading(notificationId);
     try {
@@ -250,7 +232,7 @@ const Notifications: React.FC<NotificationsProps> = ({ user, supabaseClient }) =
         <div className="space-y-4">
           {notifications.map((notification) => {
             const isActionLoading = actionLoading === notification.id;
-            const avatarUrl = notification.requester_profile?.main_image_url || notification.requester_profile?.profile_avatar_url;
+            const avatarUrl = notification.requester_profile?.profile_avatar_url;
 
             return (
               <Card key={notification.id} className="p-4 flex items-center justify-between">

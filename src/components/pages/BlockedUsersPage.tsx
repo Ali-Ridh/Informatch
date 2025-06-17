@@ -13,7 +13,6 @@ interface BlockedUser {
   blocked_at: string;
   profile_username: string;
   profile_avatar_url: string | null;
-  main_image_url?: string | null;
 }
 
 interface BlockedUsersPageProps {
@@ -33,7 +32,7 @@ const BlockedUsersPage: React.FC<BlockedUsersPageProps> = ({ user, supabaseClien
     }
   }, [user?.id, supabaseClient]);
 
-  const fetchBlockedUsers = async () => {
+const fetchBlockedUsers = async () => {
     setLoading(true);
     try {
       const { data, error } = await supabaseClient
@@ -45,8 +44,7 @@ const BlockedUsersPage: React.FC<BlockedUsersPageProps> = ({ user, supabaseClien
             user_id,
             profiles(
               profile_username,
-              profile_avatar_url,
-              profile_images(image_url, image_order)
+              profile_avatar_url
             )
           )
         `)
@@ -63,18 +61,13 @@ const BlockedUsersPage: React.FC<BlockedUsersPageProps> = ({ user, supabaseClien
           return null;
         }
 
-        // Get the main image (first image with order 1)
-        const profileImages = actualProfile.profile_images || [];
-        const mainImage = profileImages.find((img: any) => img.image_order === 1);
-
         return {
           blocked_id: block.blocked_id,
           blocked_at: block.blocked_at,
           profile_username: actualProfile.profile_username,
           profile_avatar_url: actualProfile.profile_avatar_url,
-          main_image_url: mainImage?.image_url || null,
         };
-      }).filter(Boolean);
+      }).filter(Boolean) as BlockedUser[];
 
       setBlockedUsers(formattedBlockedUsers);
     } catch (error: any) {
@@ -88,7 +81,7 @@ const BlockedUsersPage: React.FC<BlockedUsersPageProps> = ({ user, supabaseClien
       setLoading(false);
     }
   };
-
+  
   const handleUnblock = async (blockedUserId: string) => {
     try {
       setActionLoading(blockedUserId);
@@ -154,8 +147,7 @@ const BlockedUsersPage: React.FC<BlockedUsersPageProps> = ({ user, supabaseClien
           {blockedUsers.map((blockedUser) => {
             const isActionLoading = actionLoading === blockedUser.blocked_id;
             
-            // Use main_image_url first, then profile_avatar_url as fallback
-            const avatarUrl = blockedUser.main_image_url || blockedUser.profile_avatar_url;
+            const avatarUrl = blockedUser.profile_avatar_url;
 
             return (
               <Card key={blockedUser.blocked_id} className="overflow-hidden">

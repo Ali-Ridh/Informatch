@@ -220,7 +220,6 @@ Deno.serve(async (req) => {
         profile_avatar_url,
         profile_gender,
         users (user_priset_show_age, user_priset_show_bio, user_priset_is_private),
-        profile_images (image_url, image_order)
       `)
       .neq('user_id', current_user_id); // Exclude self by user_id
 
@@ -265,9 +264,6 @@ Deno.serve(async (req) => {
         return !isPrivate; // Only include if NOT private
       })
       .map((sug) => {
-        // Get the main image (first image with order 1)
-        const profileImages = sug.profile_images || [];
-        const mainImage = profileImages.find((img) => img.image_order === 1);
 
         return {
           profile_id: sug.profile_id,
@@ -282,7 +278,6 @@ Deno.serve(async (req) => {
           profile_gender: sug.profile_gender,
           user_priset_show_age: sug.users?.user_priset_show_age ?? true,
           user_priset_show_bio: sug.users?.user_priset_show_bio ?? true,
-          main_image_url: mainImage?.image_url || null,
           compatibility_score: Math.floor(Math.random() * 100) + 1
         };
       });
