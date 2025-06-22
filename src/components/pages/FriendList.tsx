@@ -6,7 +6,10 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { User } from '@supabase/supabase-js';
-import { Users, Loader2, MessageCircle, UserCircle, MoreHorizontal } from 'lucide-react';
+import { Users, Loader2, MessageCircle, UserCircle, MoreHorizontal, Phone } from 'lucide-react';
+
+
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,6 +33,7 @@ interface Friend {
   profile_avatar_url: string | null;
   profile_gender: string | null;
   profile_looking_for: string | null;
+  profile_phone: string | null; 
   matched_at: string;
   user_priset_show_age: boolean;
   user_priset_show_bio: boolean;
@@ -38,6 +42,12 @@ interface Friend {
 interface FriendListProps {
   user: User;
   supabaseClient: any;
+}
+
+const generateWaMeLink = (phoneNumber: string | null): string => {
+  if (!phoneNumber) return '';
+  const cleanedNumber = phoneNumber.replace(/\D/g, '');
+  return `https://wa.me/${cleanedNumber}`;
 }
 
 const FriendList: React.FC<FriendListProps> = ({ user, supabaseClient }) => {
@@ -84,97 +94,100 @@ const FriendList: React.FC<FriendListProps> = ({ user, supabaseClient }) => {
 
       if (error) throw error;
 
-      const blockedIds = new Set(data.map((block: any) => block.blocked_id));
+      const blockedIds = new Set<string>(data.map((block: any) => block.blocked_id));
       setBlockedUsers(blockedIds);
     } catch (error: any) {
       console.error('Error fetching blocked users:', error);
     }
   };
 
+// Fetch friends from Supabase
 const fetchFriends = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabaseClient
-        .from('matches')
-        .select(`
-          match_id,
-          match_user1_id,
-          match_user2_id,
-          matched_at,
-          user1_data:users!match_user1_id(
-            user_id,
-            user_priset_show_age,
-            user_priset_show_bio,
-            profiles(
-              profile_id,
-              profile_username,
-              profile_bio,
-              profile_birthdate,
-              profile_academic_interests,
-              profile_non_academic_interests,
-              profile_avatar_url,
-              profile_gender,
-              profile_looking_for
-            )
-          ),
-          user2_data:users!match_user2_id(
-            user_id,
-            user_priset_show_age,
-            user_priset_show_bio,
-            profiles(
-              profile_id,
-              profile_username,
-              profile_bio,
-              profile_birthdate,
-              profile_academic_interests,
-              profile_non_academic_interests,
-              profile_avatar_url,
-              profile_gender,
-              profile_looking_for
-            )
+  try {
+    const { data, error } = await supabaseClient
+      .from('matches')
+      .select(`
+        match_id,
+        match_user1_id,
+        match_user2_id,
+        matched_at,
+        user1_data:users!match_user1_id(
+          user_id,
+          user_priset_show_age,
+          user_priset_show_bio,
+          profiles(
+            profile_id,
+            profile_username,
+            profile_bio,
+            profile_birthdate,
+            profile_academic_interests,
+            profile_non_academic_interests,
+            profile_avatar_url,
+            profile_gender,
+            profile_looking_for,
+            profile_phone
           )
-        `)
-        .or(`match_user1_id.eq.${user.id},match_user2_id.eq.${user.id}`);
+        ),
+        user2_data:users!match_user2_id(
+          user_id,
+          user_priset_show_age,
+          user_priset_show_bio,
+          profiles(
+            profile_id,
+            profile_username,
+            profile_bio,
+            profile_birthdate,
+            profile_academic_interests,
+            profile_non_academic_interests,
+            profile_avatar_url,
+            profile_gender,
+            profile_looking_for,
+            profile_phone
+          )
+        )
+      `)
+      .or(`match_user1_id.eq.${user.id},match_user2_id.eq.${user.id}`);
 
-      if (error) throw new Error(error.message || 'Failed to fetch friend list.');
+    if (error) throw new Error(error.message || 'Failed to fetch friend list.');
 
-      const friendsData: Friend[] = (data || []).map((match: any) => {
-        const isUser1 = match.match_user1_id === user.id;
-        const friendUserData = isUser1 ? match.user2_data : match.user1_data;
-        const friendProfileData = friendUserData?.profiles;
+    const friendsData: Friend[] = (data || []).map((match: any) => {
+      const isUser1 = match.match_user1_id === user.id;
+      const friendUserData = isUser1 ? match.user2_data : match.user1_data;
+      const friendProfileData = friendUserData?.profiles;
 
-        const actualFriendProfile = Array.isArray(friendProfileData) ? friendProfileData[0] : friendProfileData;
+      const actualFriendProfile = Array.isArray(friendProfileData) ? friendProfileData[0] : friendProfileData;
 
-        if (!actualFriendProfile || !friendUserData) return null;
+      if (!actualFriendProfile || !friendUserData) return null;
 
-        return {
-          match_id: match.match_id,
-          user_id: friendUserData.user_id,
-          profile_username: actualFriendProfile.profile_username,
-          profile_bio: actualFriendProfile.profile_bio,
-          profile_birthdate: actualFriendProfile.profile_birthdate,
-          profile_academic_interests: actualFriendProfile.profile_academic_interests,
-          profile_non_academic_interests: actualFriendProfile.profile_non_academic_interests,
-          profile_avatar_url: actualFriendProfile.profile_avatar_url,
-          profile_gender: actualFriendProfile.profile_gender,
-          profile_looking_for: actualFriendProfile.profile_looking_for,
-          matched_at: match.matched_at,
-          user_priset_show_age: friendUserData.user_priset_show_age,
-          user_priset_show_bio: friendUserData.user_priset_show_bio,
-        };
-      }).filter(Boolean) as Friend[];
+      return {
+        match_id: match.match_id,
+        user_id: friendUserData.user_id,
+        profile_username: actualFriendProfile.profile_username,
+        profile_bio: actualFriendProfile.profile_bio,
+        profile_birthdate: actualFriendProfile.profile_birthdate,
+        profile_academic_interests: actualFriendProfile.profile_academic_interests,
+        profile_non_academic_interests: actualFriendProfile.profile_non_academic_interests,
+        profile_avatar_url: actualFriendProfile.profile_avatar_url,
+        profile_gender: actualFriendProfile.profile_gender,
+        profile_looking_for: actualFriendProfile.profile_looking_for,
+        profile_phone: actualFriendProfile.profile_phone,
+        matched_at: match.matched_at,
+        user_priset_show_age: friendUserData.user_priset_show_age,
+        user_priset_show_bio: friendUserData.user_priset_show_bio,
+      };
+    }).filter(Boolean) as Friend[];
 
-      setFriends(friendsData);
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: "Failed to fetch friends: " + error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+    setFriends(friendsData);
+  } catch (error: any) {
+    toast({
+      title: "Error",
+      description: "Failed to fetch friends: " + error.message,
+      variant: "destructive",
+    });
+  } finally {
+    setLoading(false);
+  }
+};
   
   const parseInterests = (interests: string | null) => {
     return interests ? interests.split(',').map(i => i.trim()).filter(i => i) : [];
@@ -368,6 +381,19 @@ const fetchFriends = async () => {
                             <DropdownMenuContent align="end">
                               <DropdownMenuLabel>{friend.profile_username}</DropdownMenuLabel>
                               <DropdownMenuSeparator />
+                              {friend.profile_phone && (
+                                <DropdownMenuItem asChild>
+                                  <a
+                                    href={generateWaMeLink(friend.profile_phone)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="cursor-pointer"
+                                  >
+                                    <Phone className="h-4 w-4 mr-2 text-green-600" />
+                                    <span className="text-green-600">Contact on WhatsApp</span>
+                                  </a>
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem onClick={() => handleSendMessage(friend.profile_username)}>
                                 <MessageCircle className="h-4 w-4 mr-2" />
                                 Send Message
